@@ -3,12 +3,14 @@ import * as zod from 'zod';
 import { type MemberVariables, require_member } from '../infrastructure/http/member-auth.middleware';
 import { validate } from '../infrastructure/http/validate';
 import { team_room_of } from './team-room.durable-object';
-import { open_question } from './thread.service';
+import type { UnansweredSummary } from './thread.schema';
+import { count_unanswered, open_question } from './thread.service';
 
 /**
  * Member endpoints used by the plugin scripts rather than by Claude:
  *
- * - `GET /api/events` — Server-Sent Events of `RelayEvent`s (no message text), read by the `pigeon-watch` monitor.
+ * - `GET /api/events` — Server-Sent Events of `RelayEvent`s (no message text), read by the `pigeon-watch` monitor. A
+ *   first connect also gets an `UnansweredSummary`.
  * - `GET /api/threads/:thread_id/question` — the open question as plain text, read by `pigeon-draft` so the question
  *   goes straight to the drafting Claude. Only the member who was asked may read it.
  */
@@ -21,8 +23,15 @@ export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 		validate('header', zod.object({ 'last-event-id': zod.coerce.number().int().nonnegative().nullable().catch(null) })),
 		async (context) => {
 			const member = context.get('member');
+			const last_event_id = context.req.valid('header')['last-event-id'];
+			let summary: UnansweredSummary | null = null;
 
-			return team_room_of(member.team_id).events(member, context.req.valid('header')['last-event-id']);
+			// A first connect is a new session: tell it about questions that arrived while no session was listening.
+			if (last_event_id === null) {
+				summary = { type: 'unanswered_questions', count: await count_unanswered(member) };
+			}
+
+			return team_room_of(member.team_id).events(member, last_event_id, summary);
 		},
 	)
 	.get(

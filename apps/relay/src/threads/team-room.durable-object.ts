@@ -1,6 +1,6 @@
 import { DurableObject, env } from 'cloudflare:workers';
 import type { Member } from '../teams/team.schema';
-import type { RelayEvent } from './thread.schema';
+import type { RelayEvent, UnansweredSummary } from './thread.schema';
 
 const HEARTBEAT_MS = 25_000;
 const EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -97,9 +97,10 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 	 *
 	 * @param member - The authenticated member.
 	 * @param last_event_id - The last event id the client saw, to replay anything newer; null on first connect.
+	 * @param summary - Questions waiting for the member, sent first on a first connect; null otherwise.
 	 * @returns A `text/event-stream` response.
 	 */
-	async events(member: Member, last_event_id: number | null): Promise<Response> {
+	async events(member: Member, last_event_id: number | null, summary: UnansweredSummary | null): Promise<Response> {
 		const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
 		const writer = writable.getWriter();
 		let writers = this.streams.get(member.member_id) ?? null;
@@ -112,6 +113,10 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 		writers.add(writer);
 		writer.closed.catch(() => this.remove(member.member_id, writer));
 		this.send(member.member_id, writer, ': connected\n\n');
+
+		if (summary && summary.count > 0) {
+			this.send(member.member_id, writer, `data: ${JSON.stringify(summary)}\n\n`);
+		}
 
 		this.replay(member.member_id, writer, last_event_id);
 		this.start_heartbeat();

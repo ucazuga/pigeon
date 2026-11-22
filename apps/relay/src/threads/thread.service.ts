@@ -409,6 +409,27 @@ export async function inbox(member: Member): Promise<ReadonlyArray<ThreadView>> 
 }
 
 /**
+ * How many questions are waiting for this member's answer.
+ *
+ * @param member - The member who was asked.
+ * @returns The number of threads awaiting their answer.
+ */
+export async function count_unanswered(member: Member): Promise<number> {
+	const counted = await env.DB.prepare(
+		"SELECT COUNT(*) AS unanswered FROM threads WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer'",
+	)
+		.bind(member.team_id, member.member_id)
+		.first<{ readonly unanswered: number }>();
+
+	// COUNT(*) always returns a row; null only satisfies the driver's type.
+	if (counted === null) {
+		return 0;
+	}
+
+	return counted.unanswered;
+}
+
+/**
  * A thread the member takes part in, with its history.
  *
  * @param member - The member reading.
