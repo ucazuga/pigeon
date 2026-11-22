@@ -36,7 +36,7 @@ type LayoutProps = {
 };
 
 /**
- * Shared HTML shell for landing, login and dashboard.
+ * Shared HTML shell for the sign-in and dashboard pages.
  *
  * @param props - Title and content.
  * @returns The full HTML document.

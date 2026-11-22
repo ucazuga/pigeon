@@ -13,14 +13,14 @@ const COOKIE = 'pigeon_session';
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 /**
- * Hono middleware for dashboard pages: require a signed owner session cookie, or redirect to `/login`.
+ * Hono middleware for dashboard pages: require a signed owner session cookie, or redirect to the sign-in page at `/`.
  * The cookie holds `<owner_id>.<issued_at_ms>`, signed with SESSION_SIGNING_KEY.
  */
 export const require_owner: MiddlewareHandler<{ Variables: OwnerVariables }> = async (context, next) => {
 	const value = await getSignedCookie(context, read_config().session_signing_key.unwrap(), COOKIE);
 
 	if (typeof value !== 'string') {
-		return context.redirect('/login');
+		return context.redirect('/');
 	}
 
 	const [owner_id = '', issued_at = '0'] = value.split('.');
@@ -30,7 +30,7 @@ export const require_owner: MiddlewareHandler<{ Variables: OwnerVariables }> = a
 	if (is_fresh === false || owner === null) {
 		end_owner_session(context);
 
-		return context.redirect('/login');
+		return context.redirect('/');
 	}
 
 	context.set('owner', owner);

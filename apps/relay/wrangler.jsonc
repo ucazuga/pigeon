@@ -6,6 +6,10 @@
 	// Logo and favicon, served as static files before the Worker runs.
 	"assets": { "directory": "./public" },
 	"observability": { "enabled": true },
+	// The hosted relay. Self-hosting: replace with your own domain, or remove to use workers.dev only.
+	"routes": [{ "pattern": "pigeon.ucazuga.com", "custom_domain": true }],
+	"workers_dev": false,
+	"preview_urls": false,
 	// Set per deployment, not in this file: PUBLIC_URL (the relay's public origin), SESSION_SIGNING_KEY, and
 	// EMAIL_FROM (a sender on a domain onboarded with `wrangler email sending enable <domain>`).
 	// Production: `wrangler secret put <NAME>`. Local: copy .dev.vars.example to .dev.vars.
@@ -35,5 +39,4 @@
 		"bindings": [{ "name": "TEAM_ROOM", "class_name": "TeamRoom" }]
 	},
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["TeamRoom"] }]
-	// Email sending binding is added when the magic-link mailer is implemented (Cloudflare Email Service).
 }
