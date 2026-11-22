@@ -7,16 +7,16 @@
 	"assets": { "directory": "./public" },
 	"observability": { "enabled": true },
 	"vars": {
-		// Public origin used in magic links, setup prompts and the marketplace URL.
-		"PUBLIC_URL": "http://localhost:8787",
 		"EMAIL_FROM": "pigeon@example.com"
-		// SESSION_SIGNING_KEY is a secret: `wrangler secret put SESSION_SIGNING_KEY`, or `.dev.vars` locally.
 	},
+	// Set per deployment, not in this file: PUBLIC_URL (the relay's public origin) and SESSION_SIGNING_KEY.
+	// Production: `wrangler secret put PUBLIC_URL` and `wrangler secret put SESSION_SIGNING_KEY`.
+	// Local: copy .dev.vars.example to .dev.vars.
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "pigeon",
-			"database_id": "local",
+			"database_id": "1edfb3a6-3a45-4412-b2b4-2508c9f5c948",
 			"migrations_dir": "src/infrastructure/d1/migrations"
 		}
 	],
