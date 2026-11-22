@@ -33,7 +33,7 @@ export async function request_link(email: string): Promise<void> {
 		.bind(await hash_token(token), email, new Date(Date.now() + LINK_TTL_MS).toISOString())
 		.run();
 
-	const link = new URL('/login/verify', read_config().public_url);
+	const link = new URL('/verify', read_config().public_url);
 
 	link.searchParams.set('token', token);
 	await send_magic_link(email, link);

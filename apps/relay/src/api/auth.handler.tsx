@@ -14,15 +14,15 @@ const VERIFY_FORM = zod.object({ token: zod.string().min(16).max(128) });
 /**
  * Owner sign-in pages and magic-link callbacks.
  *
- * - `GET  /login`         email form
- * - `POST /login`         send a sign-in link and show "check your inbox"
- * - `GET  /login/verify`  a "Sign in" button for the link's token (opening the link alone never signs in)
- * - `POST /login/verify`  consume the token, set the session cookie, go to `/dashboard`
- * - `POST /logout`        clear the cookie
+ * - `GET  /`        email form; the home page
+ * - `POST /`        send a sign-in link and show "check your inbox"
+ * - `GET  /verify`  a "Sign in" button for the link's token (opening the link alone never signs in)
+ * - `POST /verify`  consume the token, set the session cookie, go to `/dashboard`
+ * - `POST /logout`  clear the cookie, back to `/`
  */
 export const auth_routes = new Hono()
-	.get('/login', (context) => context.html(<LoginPage error={null} />))
-	.post('/login', async (context) => {
+	.get('/', (context) => context.html(<LoginPage error={null} />))
+	.post('/', async (context) => {
 		const form = LOGIN_FORM.safeParse(await context.req.parseBody());
 
 		if (form.success === false) {
@@ -47,8 +47,8 @@ export const auth_routes = new Hono()
 
 		return context.html(<CheckInboxPage email={form.data.email} />);
 	})
-	.get('/login/verify', (context) => context.html(<ConfirmSignInPage token={context.req.query('token') ?? ''} />))
-	.post('/login/verify', async (context) => {
+	.get('/verify', (context) => context.html(<ConfirmSignInPage token={context.req.query('token') ?? ''} />))
+	.post('/verify', async (context) => {
 		const form = VERIFY_FORM.safeParse(await context.req.parseBody());
 
 		if (form.success === false) {
@@ -70,5 +70,5 @@ export const auth_routes = new Hono()
 	.post('/logout', (context) => {
 		end_owner_session(context);
 
-		return context.redirect('/login');
+		return context.redirect('/');
 	});

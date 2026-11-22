@@ -15,7 +15,7 @@ export function LoginPage(props: { readonly error: string | null }) {
 					<h1>Sign in to Pigeon</h1>
 					<p class="muted">We will email you a link. No password needed.</p>
 					{props.error && <p class="error">{props.error}</p>}
-					<form method="post" action="/login" class="inline">
+					<form method="post" action="/" class="inline">
 						<input type="email" name="email" placeholder="you@company.com" required autofocus />
 						<button type="submit">Email me a link</button>
 					</form>
@@ -46,7 +46,7 @@ export function CheckInboxPage(props: { readonly email: string }) {
 }
 
 /**
- * Landing page of a sign-in link. Signing in takes a button press, so email scanners that open links
+ * The page a sign-in link opens. Signing in takes a button press, so email scanners that open links
  * cannot use up the link.
  *
  * @param props - The token from the link.
@@ -59,7 +59,7 @@ export function ConfirmSignInPage(props: { readonly token: string }) {
 				<div>
 					<img src="/pigeon-mark.svg" alt="Pigeon" width="88" height="88" />
 					<h1>Sign in to Pigeon</h1>
-					<form method="post" action="/login/verify">
+					<form method="post" action="/verify">
 						<input type="hidden" name="token" value={props.token} />
 						<button type="submit">Sign in</button>
 					</form>
