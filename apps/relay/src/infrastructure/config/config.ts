@@ -6,8 +6,11 @@ export type RelayConfig = {
 	/** Public origin of the relay. HTTPS, except for local development. */
 	readonly public_url: URL;
 
-	/** Sender address for magic-link emails. */
-	readonly email_from: string;
+	/** Sender address for sign-in emails, or null when email is not set up on this relay. */
+	readonly email_from: string | null;
+
+	/** Whether sign-in links are printed to the console instead of emailed (local development only). */
+	readonly log_magic_links: boolean;
 
 	/** Secret used to sign owner session cookies. */
 	readonly session_signing_key: Redacted<string>;
@@ -33,7 +36,9 @@ export function read_config(): RelayConfig {
 		throw new Error('PUBLIC_URL must use https outside local development');
 	}
 
-	if (env.EMAIL_FROM.includes('@') === false) {
+	const email_from = env.EMAIL_FROM ?? null;
+
+	if (email_from && email_from.includes('@') === false) {
 		throw new Error('EMAIL_FROM must be an email address');
 	}
 
@@ -43,7 +48,8 @@ export function read_config(): RelayConfig {
 
 	return {
 		public_url,
-		email_from: env.EMAIL_FROM,
+		email_from,
+		log_magic_links: is_local && env.MAGIC_LINK_DELIVERY === 'console',
 		session_signing_key: redact(env.SESSION_SIGNING_KEY),
 	};
 }

@@ -7,8 +7,14 @@ declare global {
 			/** Public origin, e.g. `https://pigeon.example`. */
 			readonly PUBLIC_URL: string;
 
-			/** Sender address for magic-link emails. */
-			readonly EMAIL_FROM: string;
+			/** Sender address for sign-in emails, on a domain onboarded to Cloudflare Email Sending. Unset: no email. */
+			readonly EMAIL_FROM?: string;
+
+			/** `console` logs sign-in links instead of emailing them. Honoured only when PUBLIC_URL is localhost. */
+			readonly MAGIC_LINK_DELIVERY?: string;
+
+			/** Cloudflare Email Sending. */
+			readonly EMAIL: SendEmail;
 
 			/** Secret used to sign owner session cookies. */
 			readonly SESSION_SIGNING_KEY: string;
