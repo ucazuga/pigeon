@@ -3,16 +3,7 @@ import * as zod from 'zod';
 import { PigeonError } from '../pigeon-error';
 import { MEMBER_HANDLE, type Member } from '../teams/team.schema';
 import { MESSAGE_BODY } from '../threads/thread.schema';
-import {
-	answer,
-	ask,
-	decline,
-	follow_up,
-	get_thread,
-	inbox,
-	list_teammates,
-	wait_for_answer,
-} from '../threads/thread.service';
+import * as thread_service from '../threads/thread.service';
 
 /*
  * Pigeon's MCP tools, as seen by a member's Claude Code through the plugin's remote MCP server.
@@ -70,7 +61,7 @@ export const mcp_tools = {
 				description: 'List the handles of teammates you can ask.',
 				annotations: { readOnlyHint: true },
 			},
-			async () => run(async () => ({ teammates: await list_teammates(member) }), update_notice),
+			async () => run(async () => ({ teammates: await thread_service.list_teammates(member) }), update_notice),
 		);
 
 		server.registerTool(
@@ -81,7 +72,7 @@ export const mcp_tools = {
 					'Returns thread_id; call wait_for_answer with it to get the answer.',
 				inputSchema: zod.object({ to: MEMBER_HANDLE, question: MESSAGE_BODY }),
 			},
-			async ({ to, question }) => run(() => ask(member, to, question), update_notice),
+			async ({ to, question }) => run(() => thread_service.ask(member, to, question), update_notice),
 		);
 
 		server.registerTool(
@@ -90,7 +81,8 @@ export const mcp_tools = {
 				description: 'Ask a follow-up question in a thread that has been answered or declined.',
 				inputSchema: zod.object({ thread_id: ID, question: MESSAGE_BODY }),
 			},
-			async ({ thread_id, question }) => run(() => follow_up(member, thread_id, question), update_notice),
+			async ({ thread_id, question }) =>
+				run(() => thread_service.follow_up(member, thread_id, question), update_notice),
 		);
 
 		server.registerTool(
@@ -103,7 +95,10 @@ export const mcp_tools = {
 				annotations: { readOnlyHint: true },
 			},
 			async ({ thread_id }) =>
-				run(async () => ({ note: UNTRUSTED_NOTE, ...(await wait_for_answer(member, thread_id)) }), update_notice),
+				run(
+					async () => ({ note: UNTRUSTED_NOTE, ...(await thread_service.wait_for_answer(member, thread_id)) }),
+					update_notice,
+				),
 		);
 
 		server.registerTool(
@@ -114,7 +109,8 @@ export const mcp_tools = {
 					'Use thread_id and open_question with pigeon-draft, send_answer and decline_question.',
 				annotations: { readOnlyHint: true },
 			},
-			async () => run(async () => ({ note: UNTRUSTED_NOTE, threads: await inbox(member) }), update_notice),
+			async () =>
+				run(async () => ({ note: UNTRUSTED_NOTE, threads: await thread_service.inbox(member) }), update_notice),
 		);
 
 		server.registerTool(
@@ -125,7 +121,10 @@ export const mcp_tools = {
 				annotations: { readOnlyHint: true },
 			},
 			async ({ thread_id }) =>
-				run(async () => ({ note: UNTRUSTED_NOTE, thread: await get_thread(member, thread_id) }), update_notice),
+				run(
+					async () => ({ note: UNTRUSTED_NOTE, thread: await thread_service.get_thread(member, thread_id) }),
+					update_notice,
+				),
 		);
 
 		server.registerTool(
@@ -136,8 +135,8 @@ export const mcp_tools = {
 				inputSchema: zod.object({ thread_id: ID, question_id: ID, answer: MESSAGE_BODY }),
 				_meta: REQUIRES_HUMAN,
 			},
-			async ({ thread_id, question_id, answer: answer_text }) =>
-				run(() => answer(member, thread_id, question_id, answer_text), update_notice),
+			async ({ thread_id, question_id, answer }) =>
+				run(() => thread_service.answer(member, thread_id, question_id, answer), update_notice),
 		);
 
 		server.registerTool(
@@ -146,7 +145,8 @@ export const mcp_tools = {
 				description: 'Decline a question without answering it.',
 				inputSchema: zod.object({ thread_id: ID, question_id: ID }),
 			},
-			async ({ thread_id, question_id }) => run(() => decline(member, thread_id, question_id), update_notice),
+			async ({ thread_id, question_id }) =>
+				run(() => thread_service.decline(member, thread_id, question_id), update_notice),
 		);
 	},
 };

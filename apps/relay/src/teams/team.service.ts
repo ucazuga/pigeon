@@ -23,6 +23,16 @@ const TEAM_SIZE = 3;
 const TEAM_FULL_MESSAGE = `This team is full: up to ${TEAM_SIZE} people, you included.`;
 
 /**
+ * SQL for the teammate seats in use: invites that are neither revoked nor expired. Binds the team ID, then the current
+ * time as an ISO string.
+ */
+const TAKEN_TEAMMATE_SEATS_SQL = `(
+	SELECT COUNT(*) FROM invites
+	WHERE team_id = ? AND invitee = 'teammate' AND status != 'revoked'
+	AND NOT (status = 'pending' AND expires_at <= ?)
+)`;
+
+/**
  * Who an invite is for. The owner joins their own team through an invite too: owning a team (the dashboard) and
  * being a member of it (Pigeon in your own Claude Code) are separate.
  */
@@ -119,14 +129,6 @@ export type MemberCredentials = {
 	readonly member_token: Redacted<string>;
 };
 
-function date_or_epoch(value: string | null): Date {
-	if (value === null) {
-		return new Date(0);
-	}
-
-	return new Date(value);
-}
-
 function to_invite(invite_row: InviteRow): Invite {
 	const invite_fields = {
 		team_id: invite_row.team_id,
@@ -149,7 +151,7 @@ function to_invite(invite_row: InviteRow): Invite {
 			...invite_fields,
 			status: 'revoked',
 			member_id: invite_row.member_id,
-			revoked_at: date_or_epoch(invite_row.revoked_at),
+			revoked_at: new Date(invite_row.revoked_at ?? 0),
 		};
 	}
 
@@ -160,51 +162,14 @@ function to_invite(invite_row: InviteRow): Invite {
 	const claimed_fields = {
 		...invite_fields,
 		member_id: invite_row.member_id,
-		claimed_at: date_or_epoch(invite_row.claimed_at),
+		claimed_at: new Date(invite_row.claimed_at ?? 0),
 	};
 
 	if (invite_row.status === 'claimed') {
 		return { ...claimed_fields, status: 'claimed' };
 	}
 
-	return { ...claimed_fields, status: 'connected', connected_at: date_or_epoch(invite_row.connected_at) };
-}
-
-/** Why an invite could not be claimed, from the row read before the claim. */
-function claim_refusal(invite_row: InviteRow): string {
-	if (invite_row.status !== 'pending') {
-		return `This invite is already ${invite_row.status}`;
-	}
-
-	if (new Date(invite_row.expires_at) <= new Date()) {
-		return 'This invite has expired; ask your team owner for a new one';
-	}
-
-	return 'This invite was just used';
-}
-
-function is_unique_violation(error: unknown): boolean {
-	return error instanceof Error && error.message.includes('UNIQUE constraint failed');
-}
-
-/** Turn a failed invite insert into the reason the owner sees. */
-function invite_conflict(error: unknown, handle: string): unknown {
-	if (is_unique_violation(error) === false) {
-		return error;
-	}
-
-	// SQLite names the columns of the violated index: (team_id, handle) for a taken handle, (team_id) for a second
-	// active owner invite.
-	if (error instanceof Error && error.message.includes('invites.handle')) {
-		return new PigeonError('conflict', `@${handle} is already invited to this team`);
-	}
-
-	return new PigeonError('conflict', 'You are already in this team. Remove your row first to join again.');
-}
-
-/** Whether an invite takes a place in the team. Revoked and expired invites free theirs. */
-function holds_seat(invite: Invite): boolean {
-	return invite.status !== 'revoked' && invite.status !== 'expired';
+	return { ...claimed_fields, status: 'connected', connected_at: new Date(invite_row.connected_at ?? 0) };
 }
 
 /**
@@ -223,11 +188,7 @@ async function new_invite(
 	const insert = env.DB.prepare(
 		`INSERT INTO invites (invite_code_hash, team_id, handle, invitee, status, created_at, expires_at)
 		 SELECT ?, ?, ?, ?, 'pending', ?, ?
-		 WHERE ? = 'owner' OR (
-			SELECT COUNT(*) FROM invites
-			WHERE team_id = ? AND invitee = 'teammate' AND status != 'revoked'
-			AND NOT (status = 'pending' AND expires_at <= ?)
-		 ) < ?`,
+		 WHERE ? = 'owner' OR ${TAKEN_TEAMMATE_SEATS_SQL} < ?`,
 	).bind(
 		await hash_token(invite_code),
 		team_id,
@@ -262,7 +223,7 @@ async function owned_team(owner: Owner, team_id: string): Promise<{ readonly nam
  * @param owner - The signed-in owner.
  * @returns The owner's teams, newest first.
  */
-export async function list_owned_teams(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
+export async function list_owned(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
 	const [teams, invite_rows] = await Promise.all([
 		env.DB.prepare('SELECT team_id, name FROM teams WHERE owner_id = ? ORDER BY created_at DESC')
 			.bind(owner.owner_id)
@@ -278,7 +239,10 @@ export async function list_owned_teams(owner: Owner): Promise<ReadonlyArray<Team
 	return teams.results.map((team) => {
 		const invites = invite_rows.results.filter((invite) => invite.team_id === team.team_id).map(to_invite);
 		const owner_invite = invites.find((invite) => invite.invitee === 'owner' && invite.status !== 'revoked') ?? null;
-		const teammate_seats = invites.filter((invite) => invite.invitee === 'teammate' && holds_seat(invite)).length;
+		// Revoked and expired invites free their seat.
+		const teammate_seats = invites.filter(
+			(invite) => invite.invitee === 'teammate' && invite.status !== 'revoked' && invite.status !== 'expired',
+		).length;
 		const teammates = invites.filter((invite) => invite.invitee === 'teammate' && invite.status !== 'revoked');
 		let people = teammates;
 
@@ -314,10 +278,10 @@ async function count_owned_teams(owner: Owner): Promise<number> {
 /**
  * Whether the owner may create another team, for showing or hiding the form.
  *
- * @param teams - The owner's teams, from {@link list_owned_teams}.
+ * @param teams - The owner's teams, from {@link list_owned}.
  * @returns True while the owner is under the team limit.
  */
-export function can_create_team(teams: ReadonlyArray<TeamOverview>): boolean {
+export function can_create(teams: ReadonlyArray<TeamOverview>): boolean {
 	return teams.length < TEAMS_PER_OWNER;
 }
 
@@ -331,7 +295,7 @@ export function can_create_team(teams: ReadonlyArray<TeamOverview>): boolean {
  * @returns The new team and the owner's invite code.
  * @throws {PigeonError} `conflict` when the owner already has a team.
  */
-export async function create_team(owner: Owner, name: string, owner_handle: string): Promise<CreatedTeam> {
+export async function create(owner: Owner, name: string, owner_handle: string): Promise<CreatedTeam> {
 	if ((await count_owned_teams(owner)) >= TEAMS_PER_OWNER) {
 		throw new PigeonError('conflict', TEAM_LIMIT_MESSAGE);
 	}
@@ -385,7 +349,17 @@ export async function invite_member(
 	try {
 		inserted = (await invite.insert.run()).meta.changes;
 	} catch (error) {
-		throw invite_conflict(error, handle);
+		if (error instanceof Error === false || error.message.includes('UNIQUE constraint failed') === false) {
+			throw error;
+		}
+
+		// SQLite names the columns of the violated index: (team_id, handle) for a taken handle, (team_id) for a second
+		// active owner invite.
+		if (error.message.includes('invites.handle')) {
+			throw new PigeonError('conflict', `@${handle} is already invited to this team`);
+		}
+
+		throw new PigeonError('conflict', 'You are already in this team. Remove your row first to join again.');
 	}
 
 	if (inserted === 0) {
@@ -440,11 +414,7 @@ export async function reissue_invite(owner: Owner, team_id: string, handle: stri
 	const renewal = await env.DB.prepare(
 		`UPDATE invites SET invite_code_hash = ?, expires_at = ?
 		 WHERE invite_code_hash = ? AND status = 'pending'
-		 AND (invitee = 'owner' OR expires_at > ? OR (
-			SELECT COUNT(*) FROM invites
-			WHERE team_id = ? AND invitee = 'teammate' AND status != 'revoked'
-			AND NOT (status = 'pending' AND expires_at <= ?)
-		 ) < ?)`,
+		 AND (invitee = 'owner' OR expires_at > ? OR ${TAKEN_TEAMMATE_SEATS_SQL} < ?)`,
 	)
 		.bind(
 			await hash_token(invite_code),
@@ -557,8 +527,17 @@ export async function claim_invite(code: Redacted<string>): Promise<MemberCreden
 	]);
 	const claim_update = claim_results[0] ?? null;
 
+	// The row read before the claim says why the claim updated nothing.
 	if (claim_update === null || claim_update.meta.changes !== 1) {
-		throw new PigeonError('conflict', claim_refusal(invite));
+		if (invite.status !== 'pending') {
+			throw new PigeonError('conflict', `This invite is already ${invite.status}`);
+		}
+
+		if (new Date(invite.expires_at) <= new Date()) {
+			throw new PigeonError('conflict', 'This invite has expired; ask your team owner for a new one');
+		}
+
+		throw new PigeonError('conflict', 'This invite was just used');
 	}
 
 	return {
