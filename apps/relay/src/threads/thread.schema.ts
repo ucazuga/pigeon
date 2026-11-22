@@ -28,8 +28,13 @@ export type RelayEvent =
 	| (ThreadMessage & { readonly type: 'question_declined'; readonly in_reply_to: string });
 
 /**
- * Sent once when a monitor connects without `Last-Event-ID` (a new Claude Code session): how many questions are
- * waiting for this member, so ones that arrived while no session was open are not missed. It has no event id, so it
- * does not move the client's `Last-Event-ID`.
+ * Sent once when a monitor connects without `Last-Event-ID` (a new Claude Code session). They have no event id, so
+ * they do not move the client's `Last-Event-ID`.
+ *
+ * - `unanswered_questions`: how many questions wait for this member, so ones that arrived while no session was open
+ *   are not missed.
+ * - `plugin_outdated`: the member's plugin is older than the one the marketplace serves.
  */
-export type UnansweredSummary = { readonly type: 'unanswered_questions'; readonly count: number };
+export type ConnectNotice =
+	| { readonly type: 'unanswered_questions'; readonly count: number }
+	| { readonly type: 'plugin_outdated'; readonly latest: string };
