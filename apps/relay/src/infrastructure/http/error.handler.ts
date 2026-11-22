@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import * as zod from 'zod';
 import { type ErrorCode, PigeonError } from '../../pigeon-error';
@@ -34,6 +35,11 @@ function status_of(code: ErrorCode): ContentfulStatusCode {
 export function handle_error(error: Error, context: Context): Response {
 	if (error instanceof PigeonError) {
 		return context.json({ error: error.code, message: error.message }, status_of(error.code));
+	}
+
+	// Raised by Hono's own middleware, e.g. 403 from the CSRF check.
+	if (error instanceof HTTPException) {
+		return error.getResponse();
 	}
 
 	if (error instanceof zod.ZodError) {
