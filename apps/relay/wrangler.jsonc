@@ -41,7 +41,10 @@
 		}
 	],
 	"durable_objects": {
-		"bindings": [{ "name": "TEAM_ROOM", "class_name": "TeamRoom" }]
+		"bindings": [{ "name": "TEAM_ROOM", "class_name": "TeamRoom" }],
+		// A team room with open event streams never hibernates, so a deferred update would wait the full default
+		// 5 minutes. 60 seconds lets a running wait_for_answer (45 s) finish; monitors then reconnect with Last-Event-ID.
+		"code_update_strategy": { "mode": "deferred", "max_delay": 60 }
 	},
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["TeamRoom"] }]
 }
