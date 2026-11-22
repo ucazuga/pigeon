@@ -217,6 +217,31 @@ async function owned_team(owner: Owner, team_id: string): Promise<{ readonly nam
 	return team;
 }
 
+/** A team's dashboard view, from its invites (newest first). */
+function to_overview(team_id: string, name: string, invites: ReadonlyArray<Invite>): TeamOverview {
+	const owner_invite = invites.find((invite) => invite.invitee === 'owner' && invite.status !== 'revoked') ?? null;
+	// Revoked and expired invites free their seat.
+	const teammate_seats = invites.filter(
+		(invite) => invite.invitee === 'teammate' && invite.status !== 'revoked' && invite.status !== 'expired',
+	).length;
+	const teammates = invites.filter((invite) => invite.invitee === 'teammate' && invite.status !== 'revoked');
+	let people = teammates;
+
+	if (owner_invite) {
+		people = [owner_invite, ...teammates];
+	}
+
+	return {
+		team_id,
+		name,
+		invites,
+		owner_invite,
+		people,
+		seats: { taken: 1 + teammate_seats, total: TEAM_SIZE },
+		can_invite_teammate: teammate_seats < TEAM_SIZE - 1,
+	};
+}
+
 /**
  * List the teams this owner owns, with invite states.
  *
@@ -238,28 +263,31 @@ export async function list_owned(owner: Owner): Promise<ReadonlyArray<TeamOvervi
 
 	return teams.results.map((team) => {
 		const invites = invite_rows.results.filter((invite) => invite.team_id === team.team_id).map(to_invite);
-		const owner_invite = invites.find((invite) => invite.invitee === 'owner' && invite.status !== 'revoked') ?? null;
-		// Revoked and expired invites free their seat.
-		const teammate_seats = invites.filter(
-			(invite) => invite.invitee === 'teammate' && invite.status !== 'revoked' && invite.status !== 'expired',
-		).length;
-		const teammates = invites.filter((invite) => invite.invitee === 'teammate' && invite.status !== 'revoked');
-		let people = teammates;
 
-		if (owner_invite) {
-			people = [owner_invite, ...teammates];
-		}
-
-		return {
-			team_id: team.team_id,
-			name: team.name,
-			invites,
-			owner_invite,
-			people,
-			seats: { taken: 1 + teammate_seats, total: TEAM_SIZE },
-			can_invite_teammate: teammate_seats < TEAM_SIZE - 1,
-		};
+		return to_overview(team.team_id, team.name, invites);
 	});
+}
+
+/**
+ * One team this owner owns, with invite states.
+ *
+ * @param owner - The signed-in owner.
+ * @param team_id - The team.
+ * @returns The team's overview.
+ * @throws {PigeonError} `not_found` for an unknown or foreign team.
+ */
+export async function find_owned(owner: Owner, team_id: string): Promise<TeamOverview> {
+	const [team, invite_rows] = await Promise.all([
+		owned_team(owner, team_id),
+		env.DB.prepare(
+			`SELECT invites.* FROM invites JOIN teams USING (team_id)
+			 WHERE invites.team_id = ? AND teams.owner_id = ? ORDER BY invites.created_at DESC`,
+		)
+			.bind(team_id, owner.owner_id)
+			.all<InviteRow>(),
+	]);
+
+	return to_overview(team_id, team.name, invite_rows.results.map(to_invite));
 }
 
 async function count_owned_teams(owner: Owner): Promise<number> {
@@ -324,6 +352,15 @@ export async function create(owner: Owner, name: string, owner_handle: string): 
 	return { team_id, invite_code: owner_invite.invite_code };
 }
 
+/** A new invite, with what the invite page needs. */
+export type NewInvite = {
+	/** The team's display name. */
+	readonly team_name: string;
+
+	/** The one-time invite code. Only its hash is stored. */
+	readonly invite_code: Redacted<string>;
+};
+
 /**
  * Invite someone into a team by handle: a teammate, or the owner joining their own team.
  *
@@ -331,7 +368,7 @@ export async function create(owner: Owner, name: string, owner_handle: string): 
  * @param team_id - The team to invite into.
  * @param handle - The invitee's handle (already normalized).
  * @param invitee - Whether this is a teammate or the owner themselves.
- * @returns The plaintext invite code, shown once. Only its hash is stored.
+ * @returns The team's name and the plaintext invite code, shown once. Only its hash is stored.
  * @throws {PigeonError} `not_found` for an unknown or foreign team; `conflict` when the handle is taken, the owner
  *   is already in the team, or the team is full (the owner and two teammates).
  */
@@ -340,8 +377,8 @@ export async function invite_member(
 	team_id: string,
 	handle: string,
 	invitee: Invitee,
-): Promise<Redacted<string>> {
-	await owned_team(owner, team_id);
+): Promise<NewInvite> {
+	const team = await owned_team(owner, team_id);
 
 	const invite = await new_invite(team_id, handle, invitee);
 	let inserted = 0;
@@ -366,7 +403,7 @@ export async function invite_member(
 		throw new PigeonError('conflict', TEAM_FULL_MESSAGE);
 	}
 
-	return invite.invite_code;
+	return { team_name: team.name, invite_code: invite.invite_code };
 }
 
 /** A fresh setup prompt for an invite nobody has used yet. */
