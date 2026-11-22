@@ -28,8 +28,6 @@ button:hover, .button:hover { background: #2E3D63; }
 button:active, .button:active { transform: scale(0.97); }
 button:disabled { opacity: 0.6; cursor: progress; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.secondary, button.secondary { background: var(--soft); color: var(--ink); border: 1px solid var(--line); }
-.secondary:hover, button.secondary:hover { background: #EDF1F7; }
 button.quiet { background: transparent; color: var(--danger); padding: 5px 10px; font-size: 14px; }
 button.quiet:hover { background: #FBE4E5; }
 button.quiet.neutral { color: var(--muted); }
@@ -57,20 +55,26 @@ button.copied { background: #1B6B35; }
 .notice { background: #EEF3FF; padding: 14px 16px; border-radius: 12px; margin-bottom: 16px; }
 .notice p { margin: 0 0 10px; }
 .full { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--soft); }
-pre.prompt { white-space: pre-wrap; word-break: break-all; background: var(--soft); border: 1px solid var(--line); border-radius: 10px; padding: 14px; font-size: 13px; max-height: 260px; overflow: auto; }
-.steps { list-style: none; display: flex; gap: 12px; margin: 20px 0; padding: 0; counter-reset: step; }
-.step { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); counter-increment: step; transition: color 240ms; }
-.step .mark { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; background: #fff; font-size: 12px; font-weight: 700; transition: background 240ms, border-color 240ms, color 240ms; }
-.step .mark::after { content: counter(step); }
-.steps[data-status=pending] .step:nth-child(1), .steps[data-status=claimed] .step:nth-child(2) { color: var(--ink); }
-.steps[data-status=pending] .step:nth-child(1) .mark, .steps[data-status=claimed] .step:nth-child(2) .mark { border-color: var(--ink); }
-.steps[data-status=claimed] .step:nth-child(1) .mark, .steps[data-status=connected] .step .mark { background: var(--ink); border-color: var(--ink); color: #fff; }
-.steps[data-status=claimed] .step:nth-child(1) .mark::after, .steps[data-status=connected] .step .mark::after { content: '\\2713'; }
-.steps[data-status=connected] .step { color: var(--ink); }
-.steps[data-status=connected] .step:nth-child(3) .mark { background: #1B6B35; border-color: #1B6B35; }
-.steps[data-status=expired] .step { opacity: 0.5; }
-.live { margin: 0 0 16px; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+[hidden] { display: none !important; }
+.back { display: inline-block; margin: -16px 0 12px; color: var(--muted); font-size: 14px; text-decoration: none; }
+.back:hover { color: var(--ink); }
+.invite h1 { font-size: 22px; margin-bottom: 4px; }
+.prompt-box { display: flex; align-items: center; gap: 12px; margin-top: 20px; padding: 10px 10px 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); cursor: copy; transition: border-color 160ms; }
+.prompt-box:hover { border-color: #C3CEDB; }
+.prompt-box code { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 13px; }
+.prompt-box button { flex: none; }
+.invite:has(.watch[data-status=connected], .watch[data-status=expired]) .prompt-box { opacity: 0.45; pointer-events: none; transition: opacity 300ms; }
+.fine { margin: 8px 0 0; font-size: 13px; }
+.watch { display: flex; align-items: center; gap: 10px; margin-top: 24px; padding: 14px 16px; border-radius: 12px; background: #FFF8E8; color: #6B4A00; transition: background 300ms, color 300ms; }
+.watch #status { flex: 1; }
+.watch .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #D99A00; animation: pulse 1.6s ease-in-out infinite; }
+.watch[data-status=claimed] { background: #E9F0FF; color: #23408F; }
+.watch[data-status=claimed] .dot { background: #3D63D6; }
+.watch[data-status=connected] { background: #E4F6EA; color: #1B6B35; font-weight: 500; }
+.watch[data-status=connected] .dot { width: 22px; height: 22px; display: grid; place-items: center; background: #1B6B35; animation: none; }
+.watch[data-status=connected] .dot::after { content: '\\2713'; color: #fff; font-size: 13px; font-weight: 700; }
+.watch[data-status=expired] { background: #FBE4E5; color: var(--danger); }
+.watch[data-status=expired] .dot { background: var(--danger); animation: none; }
 .center { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
 .center .card { width: 100%; max-width: 420px; text-align: center; padding: 32px 28px; }
 .center form.inline { justify-content: center; }
