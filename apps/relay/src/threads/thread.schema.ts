@@ -26,9 +26,3 @@ export type RelayEvent =
 	| (ThreadMessage & { readonly type: 'question_received' })
 	| (ThreadMessage & { readonly type: 'answer_received'; readonly in_reply_to: string })
 	| (ThreadMessage & { readonly type: 'question_declined'; readonly in_reply_to: string });
-
-/** A thread command from a participant. */
-export type ThreadCommand =
-	| { readonly type: 'follow_up'; readonly body: string }
-	| { readonly type: 'answer'; readonly in_reply_to: string; readonly body: string }
-	| { readonly type: 'decline'; readonly in_reply_to: string };
