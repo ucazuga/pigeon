@@ -3,8 +3,13 @@
 	"name": "pigeon",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-11-01",
-	// Logo and favicon, served as static files before the Worker runs.
+	// Logo, favicon and the pages' script, served as static files before the Worker runs.
 	"assets": { "directory": "./public" },
+	// Bundles the pages' script (src/web/client) into public/js before every `wrangler dev` and `wrangler deploy`.
+	"build": {
+		"command": "bun build src/web/client/pigeon.client.ts --outfile public/js/pigeon.js --minify",
+		"watch_dir": "src/web/client"
+	},
 	"observability": { "enabled": true },
 	// The hosted relay. Self-hosting: replace with your own domain, or remove to use workers.dev only.
 	"routes": [{ "pattern": "pigeon.ucazuga.com", "custom_domain": true }],
