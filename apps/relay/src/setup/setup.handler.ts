@@ -37,7 +37,7 @@ export const setup_routes = new Hono()
 		),
 		async (context) => {
 			const invite_code = context.req.valid('param').file;
-			const invite = await team_service.find_pending_invite(invite_code);
+			const invite = await team_service.get_pending_invite(invite_code);
 			const guide = render_setup_guide({
 				origin: read_config().public_url.origin,
 				invite_code,

@@ -9,14 +9,14 @@ import { DashboardPage, InviteCreatedPage } from '../web/dashboard';
 import { MEMBER_HANDLE } from './team.schema';
 import * as team_service from './team.service';
 
-function dashboard_with_error(message: string): string {
+function dashboard_error_url(message: string): string {
 	return `/dashboard?error=${encodeURIComponent(message)}`;
 }
 
 /** Redirect back to the dashboard with a message, for expected failures of a form action. */
-function back_with_error(error: unknown): string {
+function error_redirect_url(error: unknown): string {
 	if (error instanceof PigeonError) {
-		return dashboard_with_error(error.message);
+		return dashboard_error_url(error.message);
 	}
 
 	throw error;
@@ -24,7 +24,7 @@ function back_with_error(error: unknown): string {
 
 /** A form that did not parse goes back to the dashboard with the reason. */
 function back_with_invalid_input(error: zod.core.$ZodError, context: Context): Response {
-	return context.redirect(dashboard_with_error(error.issues.map((issue) => issue.message).join('; ')));
+	return context.redirect(dashboard_error_url(error.issues.map((issue) => issue.message).join('; ')));
 }
 
 /**
@@ -42,7 +42,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 	.use('/dashboard/*', require_owner)
 	.get('/dashboard', async (context) => {
 		const owner = context.get('owner');
-		const teams = await team_service.list_owned(owner);
+		const teams = await team_service.list(owner);
 		const error = context.req.query('error') ?? null;
 
 		return context.html(
@@ -75,7 +75,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 					/>,
 				);
 			} catch (error) {
-				return context.redirect(back_with_error(error));
+				return context.redirect(error_redirect_url(error));
 			}
 		},
 	)
@@ -92,7 +92,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			const { handle, invitee } = context.req.valid('form');
 
 			try {
-				const invite = await team_service.invite_member(owner, team_id, handle, invitee);
+				const invite = await team_service.invite(owner, team_id, handle, invitee);
 
 				return context.html(
 					<InviteCreatedPage
@@ -106,12 +106,12 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 					/>,
 				);
 			} catch (error) {
-				return context.redirect(back_with_error(error));
+				return context.redirect(error_redirect_url(error));
 			}
 		},
 	)
 	.get('/dashboard/teams/:team_id/invites', async (context) => {
-		const team = await team_service.find_owned(context.get('owner'), context.req.param('team_id'));
+		const team = await team_service.get(context.get('owner'), context.req.param('team_id'));
 
 		return context.json(team.invites.map((invite) => ({ handle: invite.handle, status: invite.status })));
 	})
@@ -137,7 +137,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 					/>,
 				);
 			} catch (error) {
-				return context.redirect(back_with_error(error));
+				return context.redirect(error_redirect_url(error));
 			}
 		},
 	)
@@ -150,7 +150,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			try {
 				await team_service.revoke_member(context.get('owner'), team_id, handle);
 			} catch (error) {
-				return context.redirect(back_with_error(error));
+				return context.redirect(error_redirect_url(error));
 			}
 
 			return context.redirect('/dashboard');

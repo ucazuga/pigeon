@@ -177,7 +177,7 @@ function to_invite(invite_row: InviteRow): Invite {
  * teammate seats are taken; the count runs inside the INSERT, so concurrent invites cannot overfill the team. The
  * owner's own seat is capped by the `invites_active_owner` index instead.
  */
-async function new_invite(
+async function prepare_invite_insert(
 	team_id: string,
 	handle: string,
 	invitee: Invitee,
@@ -205,7 +205,7 @@ async function new_invite(
 	return { insert, invite_code: redact(invite_code) };
 }
 
-async function owned_team(owner: Owner, team_id: string): Promise<{ readonly name: string }> {
+async function get_team_name(owner: Owner, team_id: string): Promise<{ readonly name: string }> {
 	const team = await env.DB.prepare('SELECT name FROM teams WHERE team_id = ? AND owner_id = ?')
 		.bind(team_id, owner.owner_id)
 		.first<{ readonly name: string }>();
@@ -248,7 +248,7 @@ function to_overview(team_id: string, name: string, invites: ReadonlyArray<Invit
  * @param owner - The signed-in owner.
  * @returns The owner's teams, newest first.
  */
-export async function list_owned(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
+export async function list(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
 	const [teams, invite_rows] = await Promise.all([
 		env.DB.prepare('SELECT team_id, name FROM teams WHERE owner_id = ? ORDER BY created_at DESC')
 			.bind(owner.owner_id)
@@ -276,9 +276,9 @@ export async function list_owned(owner: Owner): Promise<ReadonlyArray<TeamOvervi
  * @returns The team's overview.
  * @throws {PigeonError} `not_found` for an unknown or foreign team.
  */
-export async function find_owned(owner: Owner, team_id: string): Promise<TeamOverview> {
+export async function get(owner: Owner, team_id: string): Promise<TeamOverview> {
 	const [team, invite_rows] = await Promise.all([
-		owned_team(owner, team_id),
+		get_team_name(owner, team_id),
 		env.DB.prepare(
 			`SELECT invites.* FROM invites JOIN teams USING (team_id)
 			 WHERE invites.team_id = ? AND teams.owner_id = ? ORDER BY invites.created_at DESC`,
@@ -290,7 +290,7 @@ export async function find_owned(owner: Owner, team_id: string): Promise<TeamOve
 	return to_overview(team_id, team.name, invite_rows.results.map(to_invite));
 }
 
-async function count_owned_teams(owner: Owner): Promise<number> {
+async function count_teams(owner: Owner): Promise<number> {
 	const counted = await env.DB.prepare('SELECT COUNT(*) AS team_count FROM teams WHERE owner_id = ?')
 		.bind(owner.owner_id)
 		.first<{ readonly team_count: number }>();
@@ -306,7 +306,7 @@ async function count_owned_teams(owner: Owner): Promise<number> {
 /**
  * Whether the owner may create another team, for showing or hiding the form.
  *
- * @param teams - The owner's teams, from {@link list_owned}.
+ * @param teams - The owner's teams, from {@link list}.
  * @returns True while the owner is under the team limit.
  */
 export function can_create(teams: ReadonlyArray<TeamOverview>): boolean {
@@ -324,12 +324,12 @@ export function can_create(teams: ReadonlyArray<TeamOverview>): boolean {
  * @throws {PigeonError} `conflict` when the owner already has a team.
  */
 export async function create(owner: Owner, name: string, owner_handle: string): Promise<CreatedTeam> {
-	if ((await count_owned_teams(owner)) >= TEAMS_PER_OWNER) {
+	if ((await count_teams(owner)) >= TEAMS_PER_OWNER) {
 		throw new PigeonError('conflict', TEAM_LIMIT_MESSAGE);
 	}
 
 	const team_id = crypto.randomUUID();
-	const owner_invite = await new_invite(team_id, owner_handle, 'owner');
+	const owner_invite = await prepare_invite_insert(team_id, owner_handle, 'owner');
 
 	try {
 		// The team insert re-checks the limit, so two concurrent requests cannot both pass. When it inserts nothing,
@@ -342,7 +342,7 @@ export async function create(owner: Owner, name: string, owner_handle: string): 
 			owner_invite.insert,
 		]);
 	} catch (error) {
-		if ((await count_owned_teams(owner)) >= TEAMS_PER_OWNER) {
+		if ((await count_teams(owner)) >= TEAMS_PER_OWNER) {
 			throw new PigeonError('conflict', TEAM_LIMIT_MESSAGE);
 		}
 
@@ -353,7 +353,7 @@ export async function create(owner: Owner, name: string, owner_handle: string): 
 }
 
 /** A new invite, with what the invite page needs. */
-export type NewInvite = {
+export type CreatedInvite = {
 	/** The team's display name. */
 	readonly team_name: string;
 
@@ -372,15 +372,10 @@ export type NewInvite = {
  * @throws {PigeonError} `not_found` for an unknown or foreign team; `conflict` when the handle is taken, the owner
  *   is already in the team, or the team is full (the owner and two teammates).
  */
-export async function invite_member(
-	owner: Owner,
-	team_id: string,
-	handle: string,
-	invitee: Invitee,
-): Promise<NewInvite> {
-	const team = await owned_team(owner, team_id);
+export async function invite(owner: Owner, team_id: string, handle: string, invitee: Invitee): Promise<CreatedInvite> {
+	const team = await get_team_name(owner, team_id);
 
-	const invite = await new_invite(team_id, handle, invitee);
+	const invite = await prepare_invite_insert(team_id, handle, invitee);
 	let inserted = 0;
 
 	try {
@@ -431,7 +426,7 @@ export type ReissuedInvite = {
  *   team is full.
  */
 export async function reissue_invite(owner: Owner, team_id: string, handle: string): Promise<ReissuedInvite> {
-	const team = await owned_team(owner, team_id);
+	const team = await get_team_name(owner, team_id);
 	const invite_row = await env.DB.prepare(
 		"SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'",
 	)
@@ -480,7 +475,7 @@ export async function reissue_invite(owner: Owner, team_id: string, handle: stri
  * @throws {PigeonError} `not_found` for an unknown team or handle.
  */
 export async function revoke_member(owner: Owner, team_id: string, handle: string): Promise<void> {
-	await owned_team(owner, team_id);
+	await get_team_name(owner, team_id);
 
 	const invite = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'")
 		.bind(team_id, handle)
@@ -511,7 +506,7 @@ export async function revoke_member(owner: Owner, team_id: string, handle: strin
  * @returns The team name and handle.
  * @throws {PigeonError} `not_found` when the code is unknown, used, revoked or expired.
  */
-export async function find_pending_invite(
+export async function get_pending_invite(
 	code: string,
 ): Promise<{ readonly team_name: string; readonly handle: string }> {
 	const invite = await env.DB.prepare(
