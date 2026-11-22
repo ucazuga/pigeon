@@ -31,8 +31,8 @@ function back_with_invalid_input(error: zod.core.$ZodError, context: Context): R
  * The owner dashboard. Every route requires a signed owner session.
  *
  * - `GET  /dashboard`                                  teams, invites and their states
- * - `POST /dashboard/teams`                            create a team
- * - `POST /dashboard/teams/:team_id/invites`           invite a handle; shows the setup prompt once
+ * - `POST /dashboard/teams`                            create a team and the owner's invite; shows their prompt
+ * - `POST /dashboard/teams/:team_id/invites`           invite a teammate or the owner; shows the setup prompt once
  * - `GET  /dashboard/teams/:team_id/invites`           invite states as JSON, polled by the invite page
  * - `POST /dashboard/teams/:team_id/members/:handle/revoke`  remove a teammate
  */
@@ -47,27 +47,47 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 	})
 	.post(
 		'/dashboard/teams',
-		validate('form', zod.object({ name: zod.string().trim().min(1).max(60) }), back_with_invalid_input),
+		validate(
+			'form',
+			zod.object({ name: zod.string().trim().min(1).max(60), handle: MEMBER_HANDLE }),
+			back_with_invalid_input,
+		),
 		async (context) => {
+			const owner = context.get('owner');
+			const { name, handle } = context.req.valid('form');
+
 			try {
-				await create_team(context.get('owner'), context.req.valid('form').name);
+				const team = await create_team(owner, name, handle);
+
+				return context.html(
+					<InviteCreatedPage
+						owner={owner}
+						team_id={team.team_id}
+						team_name={name}
+						handle={handle}
+						invitee="owner"
+						prompt={render_setup_prompt(read_config().public_url.origin, team.invite_code.unwrap())}
+					/>,
+				);
 			} catch (error) {
 				return context.redirect(back_with_error(error));
 			}
-
-			return context.redirect('/dashboard');
 		},
 	)
 	.post(
 		'/dashboard/teams/:team_id/invites',
-		validate('form', zod.object({ handle: MEMBER_HANDLE }), back_with_invalid_input),
+		validate(
+			'form',
+			zod.object({ handle: MEMBER_HANDLE, invitee: zod.enum(['owner', 'teammate']).default('teammate') }),
+			back_with_invalid_input,
+		),
 		async (context) => {
 			const owner = context.get('owner');
 			const team_id = context.req.param('team_id');
-			const { handle } = context.req.valid('form');
+			const { handle, invitee } = context.req.valid('form');
 
 			try {
-				const invite_code = await invite_member(owner, team_id, handle);
+				const invite_code = await invite_member(owner, team_id, handle, invitee);
 				const teams = await list_owned_teams(owner);
 				const team = teams.find((candidate) => candidate.team_id === team_id) ?? null;
 
@@ -83,6 +103,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 						team_id={team_id}
 						team_name={team_name}
 						handle={handle}
+						invitee={invitee}
 						prompt={render_setup_prompt(read_config().public_url.origin, invite_code.unwrap())}
 					/>,
 				);
