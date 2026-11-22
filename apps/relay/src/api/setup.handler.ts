@@ -1,6 +1,8 @@
+import { env } from 'cloudflare:workers';
 import { Hono } from 'hono';
 import * as zod from 'zod';
 import { read_config } from '../infrastructure/config/config';
+import { client_ip, enforce_rate_limit } from '../infrastructure/http/rate-limit';
 import { redact } from '../infrastructure/redacted';
 import { render_setup_guide } from '../setup/setup-guide';
 import { claim_invite, find_pending_invite } from '../teams/team.service';
@@ -29,6 +31,8 @@ export const setup_routes = new Hono()
 		return context.body(guide, 200, { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'no-store' });
 	})
 	.post('/api/join', async (context) => {
+		await enforce_rate_limit(env.JOIN_LIMITER, `ip:${client_ip(context)}`);
+
 		const request = JOIN_REQUEST.parse(await context.req.json());
 		const credentials = await claim_invite(redact(request.invite_code));
 

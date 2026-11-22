@@ -17,6 +17,8 @@ function status_of(code: ErrorCode): ContentfulStatusCode {
 			return 404;
 		case 'conflict':
 			return 409;
+		case 'rate_limited':
+			return 429;
 		case 'unavailable':
 			return 503;
 		default:
