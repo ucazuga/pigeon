@@ -171,11 +171,7 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 		});
 	}
 
-	private replay(
-		member_id: string,
-		writer: WritableStreamDefaultWriter<Uint8Array>,
-		last_event_id: number | null,
-	): void {
+	private replay(member_id: string, writer: WritableStreamDefaultWriter<Uint8Array>, last_event_id: number | null): void {
 		if (last_event_id === null) {
 			return;
 		}

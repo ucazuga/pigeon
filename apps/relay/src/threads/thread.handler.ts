@@ -65,13 +65,9 @@ export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 
 		return context.text(String(unanswered));
 	})
-	.get(
-		'/api/threads/:thread_id/question',
-		validate('param', zod.object({ thread_id: zod.string().min(1).max(64) })),
-		async (context) => {
-			const { thread_id } = context.req.valid('param');
-			const question = await thread_service.get_open_question(context.get('member'), thread_id);
+	.get('/api/threads/:thread_id/question', validate('param', zod.object({ thread_id: zod.string().min(1).max(64) })), async (context) => {
+		const { thread_id } = context.req.valid('param');
+		const question = await thread_service.get_open_question(context.get('member'), thread_id);
 
-			return context.text(question);
-		},
-	);
+		return context.text(question);
+	});

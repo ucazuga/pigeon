@@ -13,7 +13,8 @@ a { color: inherit; }
 .top img { width: 36px; height: 36px; }
 .top .grow { flex: 1; font-weight: 700; font-size: 18px; }
 .muted { color: var(--muted); }
-.card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 2px rgb(31 42 68 / 4%); animation: rise 420ms var(--ease) both; }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 24px;
+  margin-bottom: 20px; box-shadow: 0 1px 2px rgb(31 42 68 / 4%); animation: rise 420ms var(--ease) both; }
 .card:nth-of-type(2) { animation-delay: 70ms; }
 .card:nth-of-type(3) { animation-delay: 140ms; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
@@ -21,9 +22,12 @@ a { color: inherit; }
 h1 { font-size: 24px; margin: 0 0 8px; }
 h2 { font-size: 18px; margin: 0 0 12px; }
 form.inline { display: flex; gap: 8px; flex-wrap: wrap; }
-input[type=text], input[type=email] { flex: 1; min-width: 180px; padding: 9px 12px; border: 1px solid #C3CEDB; border-radius: 10px; font: inherit; background: #fff; transition: border-color 160ms, box-shadow 160ms; }
+input[type=text], input[type=email] { flex: 1; min-width: 180px; padding: 9px 12px; border: 1px solid #C3CEDB;
+  border-radius: 10px; font: inherit; background: #fff; transition: border-color 160ms, box-shadow 160ms; }
 input[type=text]:focus, input[type=email]:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px rgb(108 140 255 / 20%); }
-button, .button { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border: 0; border-radius: 10px; background: var(--ink); color: #fff; font: inherit; text-decoration: none; cursor: pointer; transition: background 160ms, color 160ms, opacity 160ms, transform 120ms var(--ease); }
+button, .button { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border: 0; border-radius: 10px;
+  background: var(--ink); color: #fff; font: inherit; text-decoration: none; cursor: pointer;
+  transition: background 160ms, color 160ms, opacity 160ms, transform 120ms var(--ease); }
 button:hover, .button:hover { background: #2E3D63; }
 button:active, .button:active { transform: scale(0.97); }
 button:disabled { opacity: 0.6; cursor: progress; }
@@ -59,13 +63,15 @@ button.copied { background: #1B6B35; }
 .back { display: inline-block; margin: -16px 0 12px; color: var(--muted); font-size: 14px; text-decoration: none; }
 .back:hover { color: var(--ink); }
 .invite h1 { font-size: 22px; margin-bottom: 4px; }
-.prompt-box { display: flex; align-items: center; gap: 12px; margin-top: 20px; padding: 10px 10px 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); cursor: copy; transition: border-color 160ms; }
+.prompt-box { display: flex; align-items: center; gap: 12px; margin-top: 20px; padding: 10px 10px 10px 16px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--soft); cursor: copy; transition: border-color 160ms; }
 .prompt-box:hover { border-color: #C3CEDB; }
 .prompt-box code { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 13px; }
 .prompt-box button { flex: none; }
 .invite:has(.watch[data-status=claimed], .watch[data-status=connected], .watch[data-status=expired]) .prompt-box { opacity: 0.45; pointer-events: none; transition: opacity 300ms; }
 .fine { margin: 8px 0 0; font-size: 13px; }
-.watch { display: flex; align-items: center; gap: 10px; margin-top: 24px; padding: 14px 16px; border-radius: 12px; background: #FFF8E8; color: #6B4A00; transition: background 300ms, color 300ms; }
+.watch { display: flex; align-items: center; gap: 10px; margin-top: 24px; padding: 14px 16px;
+  border-radius: 12px; background: #FFF8E8; color: #6B4A00; transition: background 300ms, color 300ms; }
 .watch #status { flex: 1; }
 .watch .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: #D99A00; animation: pulse 1.6s ease-in-out infinite; }
 .watch[data-status=claimed] { background: #E9F0FF; color: #23408F; }

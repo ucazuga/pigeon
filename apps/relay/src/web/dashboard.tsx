@@ -38,8 +38,7 @@ function JoinYourself(props: { readonly team_id: string }) {
 	return (
 		<div class="notice">
 			<p>
-				<strong>You are not in this team yet.</strong> To ask and answer from your own Claude Code, join it with the
-				handle you will use.
+				<strong>You are not in this team yet.</strong> To ask and answer from your own Claude Code, join it with the handle you will use.
 			</p>
 			<form method="post" action={`/dashboard/teams/${props.team_id}/invites`} class="inline">
 				<input type="hidden" name="invitee" value="owner" />
@@ -108,11 +107,7 @@ function TeamCard(props: { readonly team: TeamOverview }) {
 	const team = props.team;
 
 	return (
-		<section
-			class="card team"
-			data-invites-url={`/dashboard/teams/${team.team_id}/invites`}
-			data-labels={JSON.stringify(STATUS_LABEL)}
-		>
+		<section class="card team" data-invites-url={`/dashboard/teams/${team.team_id}/invites`} data-labels={JSON.stringify(STATUS_LABEL)}>
 			<div class="card-head">
 				<h2>{team.name}</h2>
 				<Seats seats={team.seats} />
@@ -126,14 +121,8 @@ function TeamCard(props: { readonly team: TeamOverview }) {
 					</button>
 				</form>
 			)}
-			{team.can_invite_teammate === false && (
-				<p class="full muted">
-					This team is full: up to {team.seats.total} people, you included. Remove someone to invite another teammate.
-				</p>
-			)}
-			{team.people.length === 0 && (
-				<p class="empty muted">No one here yet. Invite a teammate by the handle they will use.</p>
-			)}
+			{team.can_invite_teammate === false && <p class="full muted">This team is full: up to {team.seats.total} people, you included. Remove someone to invite another teammate.</p>}
+			{team.people.length === 0 && <p class="empty muted">No one here yet. Invite a teammate by the handle they will use.</p>}
 			{team.people.length > 0 && (
 				<ul class="people">
 					{team.people.map((invite) => {
@@ -167,12 +156,7 @@ function CreateTeam() {
  * @param props - The owner, their teams, whether they may create a team and an error from the last action, if any.
  * @returns The page.
  */
-export function DashboardPage(props: {
-	readonly owner: Owner;
-	readonly teams: ReadonlyArray<TeamOverview>;
-	readonly can_create_team: boolean;
-	readonly error: string | null;
-}) {
+export function DashboardPage(props: { readonly owner: Owner; readonly teams: ReadonlyArray<TeamOverview>; readonly can_create_team: boolean; readonly error: string | null }) {
 	return (
 		<Layout title="Dashboard · Pigeon">
 			<main class="page">

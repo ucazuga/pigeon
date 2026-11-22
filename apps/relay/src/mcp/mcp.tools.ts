@@ -79,8 +79,7 @@ export function register_tools(server: McpServer, member: Member, update_notice:
 			description: 'Ask a follow-up question in a thread that has been answered or declined.',
 			inputSchema: zod.object({ thread_id: ID, question: MESSAGE_BODY }),
 		},
-		async ({ thread_id, question }) =>
-			run_tool(() => thread_service.follow_up(member, thread_id, question), update_notice),
+		async ({ thread_id, question }) => run_tool(() => thread_service.follow_up(member, thread_id, question), update_notice),
 	);
 
 	server.registerTool(
@@ -92,11 +91,7 @@ export function register_tools(server: McpServer, member: Member, update_notice:
 			inputSchema: zod.object({ thread_id: ID }),
 			annotations: { readOnlyHint: true },
 		},
-		async ({ thread_id }) =>
-			run_tool(
-				async () => ({ note: UNTRUSTED_NOTE, ...(await thread_service.wait_for_answer(member, thread_id)) }),
-				update_notice,
-			),
+		async ({ thread_id }) => run_tool(async () => ({ note: UNTRUSTED_NOTE, ...(await thread_service.wait_for_answer(member, thread_id)) }), update_notice),
 	);
 
 	server.registerTool(
@@ -107,8 +102,7 @@ export function register_tools(server: McpServer, member: Member, update_notice:
 				'Use thread_id and open_question with pigeon-draft, send_answer and decline_question.',
 			annotations: { readOnlyHint: true },
 		},
-		async () =>
-			run_tool(async () => ({ note: UNTRUSTED_NOTE, threads: await thread_service.list_inbox(member) }), update_notice),
+		async () => run_tool(async () => ({ note: UNTRUSTED_NOTE, threads: await thread_service.list_inbox(member) }), update_notice),
 	);
 
 	server.registerTool(
@@ -118,23 +112,17 @@ export function register_tools(server: McpServer, member: Member, update_notice:
 			inputSchema: zod.object({ thread_id: ID }),
 			annotations: { readOnlyHint: true },
 		},
-		async ({ thread_id }) =>
-			run_tool(
-				async () => ({ note: UNTRUSTED_NOTE, thread: await thread_service.get_thread(member, thread_id) }),
-				update_notice,
-			),
+		async ({ thread_id }) => run_tool(async () => ({ note: UNTRUSTED_NOTE, thread: await thread_service.get_thread(member, thread_id) }), update_notice),
 	);
 
 	server.registerTool(
 		'send_answer',
 		{
-			description:
-				'Send the human-approved answer to a question. Only call this after the human has read the exact text.',
+			description: 'Send the human-approved answer to a question. Only call this after the human has read the exact text.',
 			inputSchema: zod.object({ thread_id: ID, question_id: ID, answer: MESSAGE_BODY }),
 			_meta: REQUIRES_HUMAN,
 		},
-		async ({ thread_id, question_id, answer }) =>
-			run_tool(() => thread_service.answer(member, thread_id, question_id, answer), update_notice),
+		async ({ thread_id, question_id, answer }) => run_tool(() => thread_service.answer(member, thread_id, question_id, answer), update_notice),
 	);
 
 	server.registerTool(
@@ -143,7 +131,6 @@ export function register_tools(server: McpServer, member: Member, update_notice:
 			description: 'Decline a question without answering it.',
 			inputSchema: zod.object({ thread_id: ID, question_id: ID }),
 		},
-		async ({ thread_id, question_id }) =>
-			run_tool(() => thread_service.decline(member, thread_id, question_id), update_notice),
+		async ({ thread_id, question_id }) => run_tool(() => thread_service.decline(member, thread_id, question_id), update_notice),
 	);
 }

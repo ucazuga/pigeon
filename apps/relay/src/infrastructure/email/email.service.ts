@@ -23,13 +23,7 @@ export async function send_magic_link(to: string, link: URL): Promise<void> {
 		throw new PigeonError('unavailable', 'Sign-in email is not set up on this relay yet');
 	}
 
-	const text = [
-		'Sign in to Pigeon:',
-		'',
-		link.toString(),
-		'',
-		'The link works once and expires in 15 minutes. If you did not ask for it, ignore this email.',
-	].join('\n');
+	const text = ['Sign in to Pigeon:', '', link.toString(), '', 'The link works once and expires in 15 minutes. If you did not ask for it, ignore this email.'].join('\n');
 
 	try {
 		await env.EMAIL.send({

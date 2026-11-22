@@ -35,6 +35,4 @@ export type RelayEvent =
  *   are not missed.
  * - `plugin_outdated`: the member's plugin is older than the one the marketplace serves.
  */
-export type ConnectNotice =
-	| { readonly type: 'unanswered_questions'; readonly count: number }
-	| { readonly type: 'plugin_outdated'; readonly latest: string };
+export type ConnectNotice = { readonly type: 'unanswered_questions'; readonly count: number } | { readonly type: 'plugin_outdated'; readonly latest: string };

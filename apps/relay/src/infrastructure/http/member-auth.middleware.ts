@@ -27,9 +27,7 @@ export const require_member: MiddlewareHandler<{ Variables: MemberVariables }> =
 		throw new PigeonError('unauthorized', 'Missing member token');
 	}
 
-	const member = await env.DB.prepare(
-		'SELECT team_id, member_id, handle FROM members WHERE token_hash = ? AND revoked_at IS NULL',
-	)
+	const member = await env.DB.prepare('SELECT team_id, member_id, handle FROM members WHERE token_hash = ? AND revoked_at IS NULL')
 		.bind(await hash_token(authorization.slice(BEARER_PREFIX.length)))
 		.first<Member>();
 

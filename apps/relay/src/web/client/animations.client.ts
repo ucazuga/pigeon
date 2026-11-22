@@ -18,11 +18,7 @@ export function pop(elements: Element | Element[]): void {
 		return;
 	}
 
-	animate(
-		elements,
-		{ scale: [0.8, 1], opacity: [0.5, 1] },
-		{ type: spring, bounce: 0.45, duration: 0.45, delay: stagger(0.08) },
-	);
+	animate(elements, { scale: [0.8, 1], opacity: [0.5, 1] }, { type: spring, bounce: 0.45, duration: 0.45, delay: stagger(0.08) });
 }
 
 /**
