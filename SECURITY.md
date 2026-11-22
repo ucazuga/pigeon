@@ -23,6 +23,11 @@ Please do **not** open a public issue. Use GitHub's private vulnerability report
   It fetches the question itself and receives it on stdin, never as a command-line argument.
 - The member token is sent only to the relay it was issued by, is stored hashed on the relay, written locally with
   mode 600, and never printed. Owners can revoke members.
+- Invite codes and sign-in links are single-use and expire (7 days and 15 minutes). Sign-in emails and invite claims
+  are rate limited.
+
+Checked against Claude Code 2.1.330: an unattended (`-p`) session cannot call `send_answer` even when it is on the
+allow list, and the drafting session's reads outside the chosen repository are denied.
 
 ## Known limitations
 
