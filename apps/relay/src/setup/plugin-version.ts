@@ -34,6 +34,7 @@ export function plugin_update_notice(version: string | null): string | null {
 
 	return (
 		`The Pigeon plugin on this machine is out of date (latest is ${LATEST_PLUGIN_VERSION}). ` +
-		`Tell the user, and offer to run \`${UPDATE_COMMAND}\`; then they run /reload-plugins or restart Claude Code.`
+		`Tell the user, and offer to run \`${UPDATE_COMMAND}\`; then they restart Claude Code (/reload-plugins does not ` +
+		'restart the background monitor that brings notifications).'
 	);
 }
