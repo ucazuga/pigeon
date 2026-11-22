@@ -23,6 +23,15 @@ function show_status(badge: HTMLElement, status: string, label: string): void {
 	pop(badge);
 }
 
+/** "New prompt" only works while nobody has used the invite; once their agent has claimed it, the action goes. */
+function drop_prompt_action_once_used(person: HTMLElement, status: string): void {
+	const prompt_form = person.querySelector('form[action$="/prompt"]');
+
+	if (prompt_form && (status === 'claimed' || status === 'connected')) {
+		prompt_form.remove();
+	}
+}
+
 function watch_statuses(card: HTMLElement): void {
 	const url = card.dataset.invitesUrl ?? null;
 
@@ -39,6 +48,7 @@ function watch_statuses(card: HTMLElement): void {
 
 			if (status && badge && badge.dataset.status !== status) {
 				show_status(badge, status, labels[status] ?? status);
+				drop_prompt_action_once_used(person, status);
 			}
 		}
 

@@ -7,7 +7,14 @@ import { PigeonError } from '../pigeon-error';
 import { render_setup_prompt } from '../setup/setup-guide';
 import { DashboardPage, InviteCreatedPage } from '../web/dashboard';
 import { MEMBER_HANDLE } from './team.schema';
-import { can_create_team, create_team, invite_member, list_owned_teams, revoke_member } from './team.service';
+import {
+	can_create_team,
+	create_team,
+	invite_member,
+	list_owned_teams,
+	reissue_invite,
+	revoke_member,
+} from './team.service';
 
 function dashboard_with_error(message: string): string {
 	return `/dashboard?error=${encodeURIComponent(message)}`;
@@ -34,6 +41,7 @@ function back_with_invalid_input(error: zod.core.$ZodError, context: Context): R
  * - `POST /dashboard/teams`                            create a team and the owner's invite; shows their prompt
  * - `POST /dashboard/teams/:team_id/invites`           invite a teammate or the owner; shows the setup prompt once
  * - `GET  /dashboard/teams/:team_id/invites`           invite states as JSON, polled by the invite page
+ * - `POST /dashboard/teams/:team_id/members/:handle/prompt`  a new setup prompt for an unused invite
  * - `POST /dashboard/teams/:team_id/members/:handle/revoke`  remove a teammate
  */
 export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
@@ -69,6 +77,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 						team_name={name}
 						handle={handle}
 						invitee="owner"
+						earlier_prompt="none"
 						prompt={render_setup_prompt(read_config().public_url.origin, team.invite_code.unwrap())}
 					/>,
 				);
@@ -107,6 +116,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 						team_name={team_name}
 						handle={handle}
 						invitee={invitee}
+						earlier_prompt="none"
 						prompt={render_setup_prompt(read_config().public_url.origin, invite_code.unwrap())}
 					/>,
 				);
@@ -125,6 +135,32 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 
 		return context.json(team.invites.map((invite) => ({ handle: invite.handle, status: invite.status })));
 	})
+	.post(
+		'/dashboard/teams/:team_id/members/:handle/prompt',
+		validate('param', zod.object({ team_id: zod.string().min(1), handle: MEMBER_HANDLE }), back_with_invalid_input),
+		async (context) => {
+			const owner = context.get('owner');
+			const { team_id, handle } = context.req.valid('param');
+
+			try {
+				const invite = await reissue_invite(owner, team_id, handle);
+
+				return context.html(
+					<InviteCreatedPage
+						owner={owner}
+						team_id={team_id}
+						team_name={invite.team_name}
+						handle={handle}
+						invitee={invite.invitee}
+						earlier_prompt="replaced"
+						prompt={render_setup_prompt(read_config().public_url.origin, invite.invite_code.unwrap())}
+					/>,
+				);
+			} catch (error) {
+				return context.redirect(back_with_error(error));
+			}
+		},
+	)
 	.post(
 		'/dashboard/teams/:team_id/members/:handle/revoke',
 		validate('param', zod.object({ team_id: zod.string().min(1), handle: MEMBER_HANDLE }), back_with_invalid_input),

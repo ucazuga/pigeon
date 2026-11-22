@@ -10,6 +10,15 @@ const STATUS_LABEL: Readonly<Record<Invite['status'], string>> = {
 	expired: 'Invite expired',
 };
 
+/** A new setup prompt can be made only for an invite nobody has used yet. */
+const PROMPT_ACTION: Readonly<Record<Invite['status'], string | null>> = {
+	pending: 'New prompt',
+	claimed: null,
+	connected: null,
+	revoked: null,
+	expired: 'Renew',
+};
+
 function Header(props: { readonly owner: Owner }) {
 	return (
 		<div class="top">
@@ -79,6 +88,13 @@ function Person(props: { readonly team_id: string; readonly invite: Invite }) {
 			<span class={`status ${props.invite.status}`} data-status={props.invite.status}>
 				{STATUS_LABEL[props.invite.status]}
 			</span>
+			{PROMPT_ACTION[props.invite.status] && (
+				<form method="post" action={`/dashboard/teams/${props.team_id}/members/${handle}/prompt`}>
+					<button type="submit" class="quiet neutral" data-pending="…">
+						{PROMPT_ACTION[props.invite.status]}
+					</button>
+				</form>
+			)}
 			<form method="post" action={`/dashboard/teams/${props.team_id}/members/${handle}/revoke`}>
 				<button type="submit" class="quiet" data-confirm="Remove?">
 					Remove
@@ -200,8 +216,8 @@ function invite_copy(invitee: Invitee, handle: string, team_name: string) {
  * Shown once after an invite is created: the setup prompt, and live progress of the agent that uses it. For the
  * owner's own invite (after creating a team, or "join yourself"), it tells the owner to run it themselves.
  *
- * @param props - The team, the invited handle, who the invite is for and the setup prompt (contains the one-time
- *   invite code).
+ * @param props - The team, the invited handle, who the invite is for, whether it replaces an earlier prompt and the
+ *   setup prompt (contains the one-time invite code).
  * @returns The page.
  */
 export function InviteCreatedPage(props: {
@@ -210,6 +226,7 @@ export function InviteCreatedPage(props: {
 	readonly team_name: string;
 	readonly handle: string;
 	readonly invitee: Invitee;
+	readonly earlier_prompt: 'none' | 'replaced';
 	readonly prompt: string;
 }) {
 	const copy = invite_copy(props.invitee, props.handle, props.team_name);
@@ -228,6 +245,9 @@ export function InviteCreatedPage(props: {
 				>
 					<h2>{copy.title}</h2>
 					<p class="muted">{copy.instructions}</p>
+					{props.earlier_prompt === 'replaced' && (
+						<p class="notice">This is a new prompt. The earlier one for @{props.handle} no longer works.</p>
+					)}
 					<ol class="steps" data-status="pending">
 						{copy.steps.map((step) => {
 							return (
