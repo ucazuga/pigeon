@@ -2,6 +2,8 @@ import { env } from 'cloudflare:workers';
 import type { MiddlewareHandler } from 'hono';
 import type { Member } from '../../members/member.schema';
 import { PigeonError } from '../../pigeon-error';
+import { mark_connected } from '../../teams/team.service';
+import { hash_token } from '../token';
 
 /** Hono variables set by {@link require_member}. */
 export type MemberVariables = {
@@ -14,6 +16,7 @@ const BEARER_PREFIX = 'Bearer ';
 /**
  * Hono middleware: require `Authorization: Bearer <member token>` and expose the member as `member`.
  * Tokens are looked up by SHA-256 hash in D1 and never logged or echoed. Revoked members are rejected.
+ * The first authenticated request also marks the member's invite as connected, for the dashboard.
  *
  * @throws {PigeonError} `unauthorized` for a missing, unknown or revoked token.
  */
@@ -24,22 +27,13 @@ export const require_member: MiddlewareHandler<{ Variables: MemberVariables }> =
 		throw new PigeonError('unauthorized', 'Missing member token');
 	}
 
-	context.set('member', await find_member_by_token(header.slice(BEARER_PREFIX.length)));
+	const member = await find_member_by_token(header.slice(BEARER_PREFIX.length));
+
+	await mark_connected(member.member_id);
+	context.set('member', member);
 
 	await next();
 };
-
-/**
- * Hex-encoded SHA-256 of a token, as stored in `members.token_hash`.
- *
- * @param token - The raw token.
- * @returns The hash.
- */
-export async function hash_token(token: string): Promise<string> {
-	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
-
-	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
 
 async function find_member_by_token(token: string): Promise<Member> {
 	const member = await env.DB.prepare(
