@@ -1,7 +1,9 @@
 import { env } from 'cloudflare:workers';
 import type { Member } from '../members/member.schema';
 import { PigeonError } from '../pigeon-error';
+import { team_room_of } from './team-room';
 import * as Thread from './thread';
+import type { RelayEvent } from './thread.schema';
 
 /*
  * Asking, answering and reading threads, stored in D1. `thread.ts` decides whether a move is allowed; this module
@@ -136,6 +138,18 @@ async function save_move(
 	}
 }
 
+/**
+ * Tell the recipient's team room about a saved message. The message is already stored, so a failure here is logged
+ * and swallowed: the recipient still sees it in their inbox or on their next wait.
+ */
+async function notify(team_id: string, member_id: string, event: RelayEvent): Promise<void> {
+	try {
+		await team_room_of(team_id).notify(member_id, event);
+	} catch (error) {
+		console.error(JSON.stringify({ event: 'notify_failed', type: event.type, message: String(error) }));
+	}
+}
+
 async function handles_of(team_id: string): Promise<ReadonlyMap<string, string>> {
 	const { results } = await env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?')
 		.bind(team_id)
@@ -236,6 +250,14 @@ export async function ask(
 		).bind(question_id, thread_id, member.member_id, question, now),
 	]);
 
+	await notify(member.team_id, answerer.member_id, {
+		type: 'question_received',
+		thread_id,
+		message_id: question_id,
+		from: member.handle,
+		sent_at: now,
+	});
+
 	return { thread_id, question_id };
 }
 
@@ -258,6 +280,13 @@ export async function follow_up(
 	const after = Thread.follow_up(to_thread(row), member.member_id, question_id);
 
 	await save_move(row, after, { message_id: question_id, sender: member.member_id, kind: 'question' }, question, null);
+	await notify(member.team_id, row.answerer, {
+		type: 'question_received',
+		thread_id,
+		message_id: question_id,
+		from: member.handle,
+		sent_at: new Date().toISOString(),
+	});
 
 	return { question_id };
 }
@@ -288,6 +317,14 @@ export async function answer(
 		answer_text,
 		question_id,
 	);
+	await notify(member.team_id, row.asker, {
+		type: 'answer_received',
+		thread_id,
+		message_id: answer_id,
+		in_reply_to: question_id,
+		from: member.handle,
+		sent_at: new Date().toISOString(),
+	});
 }
 
 /**
@@ -304,6 +341,14 @@ export async function decline(member: Member, thread_id: string, question_id: st
 	const after = Thread.decline(to_thread(row), member.member_id, question_id);
 
 	await save_move(row, after, { message_id: decline_id, sender: member.member_id, kind: 'decline' }, null, question_id);
+	await notify(member.team_id, row.asker, {
+		type: 'question_declined',
+		thread_id,
+		message_id: decline_id,
+		in_reply_to: question_id,
+		from: member.handle,
+		sent_at: new Date().toISOString(),
+	});
 }
 
 /**
@@ -363,4 +408,45 @@ export async function open_question(member: Member, thread_id: string): Promise<
 	}
 
 	return message.body;
+}
+
+/** How long one `wait_for_answer` call waits before asking the caller to call again (under MCP's 5 min idle limit). */
+const WAIT_MS = 4 * 60 * 1000;
+
+/** Result of waiting for an answer. */
+export type WaitResult =
+	| { readonly status: 'still_waiting'; readonly thread_id: string; readonly message: string }
+	| { readonly status: 'replied'; readonly thread: ThreadView };
+
+/**
+ * Wait for the answer to the asker's open question, for up to four minutes.
+ *
+ * @param member - The asker.
+ * @param thread_id - The thread.
+ * @returns The thread once it is answered or declined, or `still_waiting` after the timeout.
+ * @throws {PigeonError} `not_found` for an unknown thread; `forbidden` unless the member asked.
+ */
+export async function wait_for_answer(member: Member, thread_id: string): Promise<WaitResult> {
+	const since = Date.now();
+	const row = await load_thread(member, thread_id);
+
+	if (row.asker !== member.member_id) {
+		throw new PigeonError('forbidden', 'Only the person who asked can wait for the answer');
+	}
+
+	if (row.status === 'awaiting_answer') {
+		await team_room_of(member.team_id).wait_for_reply(member.member_id, thread_id, since, WAIT_MS);
+	}
+
+	const latest = await load_thread(member, thread_id);
+
+	if (latest.status === 'awaiting_answer') {
+		return {
+			status: 'still_waiting',
+			thread_id,
+			message: 'No answer yet. Call wait_for_answer again to keep waiting.',
+		};
+	}
+
+	return { status: 'replied', thread: await view_of(member, latest) };
 }

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { not_yet_implemented } from '../infrastructure/defects';
 import { type MemberVariables, require_member } from '../infrastructure/http/member-auth.middleware';
+import { team_room_of } from '../threads/team-room';
 import { open_question } from '../threads/thread.service';
 
 /**
@@ -13,7 +13,17 @@ import { open_question } from '../threads/thread.service';
 export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 	.use('/api/events', require_member)
 	.use('/api/threads/*', require_member)
-	.get('/api/events', () => not_yet_implemented('GET /api/events (SSE)'))
+	.get('/api/events', async (context) => {
+		const member = context.get('member');
+		const last_event_id = Number.parseInt(context.req.header('Last-Event-ID') ?? '', 10);
+		let replay_from: number | null = null;
+
+		if (Number.isSafeInteger(last_event_id)) {
+			replay_from = last_event_id;
+		}
+
+		return team_room_of(member.team_id).events(member, replay_from);
+	})
 	.get('/api/threads/:thread_id/question', async (context) =>
 		context.text(await open_question(context.get('member'), context.req.param('thread_id'))),
 	);

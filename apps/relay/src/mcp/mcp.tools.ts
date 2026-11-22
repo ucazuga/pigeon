@@ -1,10 +1,18 @@
 import type { CallToolResult, McpServer } from '@modelcontextprotocol/server';
 import * as zod from 'zod';
-import { not_yet_implemented } from '../infrastructure/defects';
 import { MEMBER_HANDLE, type Member } from '../members/member.schema';
 import { PigeonError } from '../pigeon-error';
 import { MESSAGE_BODY } from '../threads/thread.schema';
-import { answer, ask, decline, follow_up, get_thread, inbox, list_teammates } from '../threads/thread.service';
+import {
+	answer,
+	ask,
+	decline,
+	follow_up,
+	get_thread,
+	inbox,
+	list_teammates,
+	wait_for_answer,
+} from '../threads/thread.service';
 
 /*
  * Pigeon's MCP tools, as seen by a member's Claude Code through the plugin's remote MCP server.
@@ -82,12 +90,13 @@ export const mcp_tools = {
 			'wait_for_answer',
 			{
 				description:
-					'Wait until a teammate answers or declines the open question in a thread, and return the answer. ' +
-					'It can take minutes; keep working on other things meanwhile.',
+					'Wait up to four minutes for a teammate to answer or decline the open question in a thread. ' +
+					'Returns the thread with the reply, or status still_waiting: then call it again to keep waiting.',
 				inputSchema: zod.object({ thread_id: ID }),
 				annotations: { readOnlyHint: true },
 			},
-			async () => run(async () => not_yet_implemented('wait_for_answer')),
+			async ({ thread_id }) =>
+				run(async () => ({ note: UNTRUSTED_NOTE, ...(await wait_for_answer(member, thread_id)) })),
 		);
 
 		server.registerTool(
