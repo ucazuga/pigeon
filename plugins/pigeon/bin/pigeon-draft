@@ -65,7 +65,10 @@ if [ -r "$session_file" ]; then
 fi
 
 cd "$repository"
-printf '%s' "$question" | claude "$@" >"$output_file"
+
+# Keep Claude's output even when it exits non-zero (e.g. the spend cap was hit): the JSON says why.
+claude_status=0
+printf '%s' "$question" | claude "$@" >"$output_file" || claude_status=$?
 
 session_id=$(sed -n 's/.*"session_id":"\([^"]*\)".*/\1/p' "$output_file")
 
@@ -74,3 +77,4 @@ if is_session_id "$session_id"; then
 fi
 
 cat "$output_file"
+exit "$claude_status"
