@@ -34,11 +34,12 @@ The fresh, read-only `claude -p` session that writes the draft. Its ID is kept o
 The relay's remote MCP server at `/mcp`. A member's Claude uses its tools to ask, wait, read the inbox and send answers.
 
 **Relay**:
-The Cloudflare Worker that carries a team's messages. Each team has one **team room** (a Durable Object).
+The Cloudflare Worker that carries a team's messages. Threads and messages are stored in D1. Each team has one **team room** (a Durable Object) that delivers new messages live to members who are waiting or watching.
 
 ## Relationships
 
 - An **Owner** can own many teams; each team has exactly one team room.
+- Threads refer to members by member ID, never by handle, so a reused handle never inherits someone else's threads.
 - A **Thread** has exactly one asker and one answerer.
 - A **Draft** belongs to exactly one question and exists only on the answerer's machine.
 - `send_answer` requires human approval on every call (Claude Code `requiresUserInteraction`).
