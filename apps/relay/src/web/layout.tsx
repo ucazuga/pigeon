@@ -63,7 +63,7 @@ button.copied { background: #1B6B35; }
 .prompt-box:hover { border-color: #C3CEDB; }
 .prompt-box code { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); font-size: 13px; }
 .prompt-box button { flex: none; }
-.invite:has(.watch[data-status=connected], .watch[data-status=expired]) .prompt-box { opacity: 0.45; pointer-events: none; transition: opacity 300ms; }
+.invite:has(.watch[data-status=claimed], .watch[data-status=connected], .watch[data-status=expired]) .prompt-box { opacity: 0.45; pointer-events: none; transition: opacity 300ms; }
 .fine { margin: 8px 0 0; font-size: 13px; }
 .watch { display: flex; align-items: center; gap: 10px; margin-top: 24px; padding: 14px 16px; border-radius: 12px; background: #FFF8E8; color: #6B4A00; transition: background 300ms, color 300ms; }
 .watch #status { flex: 1; }
