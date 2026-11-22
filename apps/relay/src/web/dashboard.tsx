@@ -4,7 +4,7 @@ import { Layout } from './layout';
 
 const STATUS_LABEL: Readonly<Record<Invite['status'], string>> = {
 	pending: 'Waiting for their agent',
-	claimed: 'Setting up',
+	claimed: 'Waiting for restart',
 	connected: 'Connected',
 	revoked: 'Revoked',
 	expired: 'Invite expired',
@@ -194,7 +194,7 @@ function invite_copy(invitee: Invitee, handle: string, team_name: string) {
 			title: 'Set up Pigeon on your machine',
 			instructions: `Paste this into your Claude Code. Your agent does the rest and joins ${team_name} as @${handle}.`,
 			waiting: 'Waiting for your agent…',
-			claimed: 'Your agent is setting up Pigeon…',
+			claimed: 'Set up. Restart Claude Code to connect.',
 			connected: `You are in ${team_name} as @${handle}.`,
 			expired: 'This prompt expired. Get a new one from the dashboard.',
 		};
@@ -204,7 +204,7 @@ function invite_copy(invitee: Invitee, handle: string, team_name: string) {
 		title: `Invite @${handle}`,
 		instructions: `Send this to @${handle}. They paste it into Claude Code, and their agent does the rest.`,
 		waiting: `Waiting for @${handle}'s agent…`,
-		claimed: `@${handle}'s agent is setting up Pigeon…`,
+		claimed: `@${handle}'s agent is done. Waiting for them to restart Claude Code…`,
 		connected: `@${handle} is in ${team_name}.`,
 		expired: 'This prompt expired. Get a new one from the dashboard.',
 	};
