@@ -180,3 +180,44 @@ describe('pigeon-token', () => {
 		expect(result.stderr).toContain('pigeon-join');
 	});
 });
+
+describe('pigeon-pending', () => {
+	test('adds a reminder when questions are waiting', async () => {
+		await write_credentials();
+		await install_fake('curl', `cat >"${'$'}{HOME}/curl-config"; echo "$@" >"${'$'}{HOME}/argv"; printf 2`);
+
+		const result = await run('pigeon-pending', []);
+
+		expect(result.exit_code).toBe(0);
+		expect(result.stdout).toContain('2 question(s) from teammates are waiting');
+		expect((await recorded_argv()).join(' ')).toContain('https://relay.test/api/unanswered');
+	});
+
+	test('prints nothing when no question is waiting', async () => {
+		await write_credentials();
+		await install_fake('curl', 'cat >/dev/null; printf 0');
+
+		const result = await run('pigeon-pending', []);
+
+		expect(result.exit_code).toBe(0);
+		expect(result.stdout).toBe('');
+	});
+
+	test('never blocks the prompt: not joined, relay down or an unexpected reply print nothing', async () => {
+		const not_joined = await run('pigeon-pending', []);
+
+		await write_credentials();
+		await install_fake('curl', 'cat >/dev/null; exit 7');
+
+		const relay_down = await run('pigeon-pending', []);
+
+		await install_fake('curl', 'cat >/dev/null; printf "<html>sign in</html>"');
+
+		const unexpected = await run('pigeon-pending', []);
+
+		for (const result of [not_joined, relay_down, unexpected]) {
+			expect(result.exit_code).toBe(0);
+			expect(result.stdout).toBe('');
+		}
+	});
+});

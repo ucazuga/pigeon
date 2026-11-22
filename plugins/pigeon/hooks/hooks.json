@@ -1,0 +1,16 @@
+{
+	"description": "Reminds Claude of teammates' questions waiting for an answer, where the background monitor does not run.",
+	"hooks": {
+		"UserPromptSubmit": [
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/pigeon-pending\"",
+						"timeout": 5
+					}
+				]
+			}
+		]
+	}
+}

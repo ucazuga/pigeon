@@ -1,0 +1,24 @@
+#!/bin/sh
+# UserPromptSubmit hook: before each prompt, ask the relay how many questions wait for this member's answer, and if
+# any do, add one line of context so Claude mentions it. Covers surfaces where the background monitor does not run
+# (the Claude desktop app). Prints only a count from a fixed template, never message text. Never blocks the prompt:
+# not joined, offline or a slow relay all print nothing and exit 0.
+set -u
+. "$(dirname "$0")/pigeon-credentials"
+
+if [ ! -r "$PIGEON_CREDENTIALS" ]; then
+	exit 0
+fi
+
+relay_url=$(pigeon_field relay_url)
+count=$(pigeon_auth_config | curl -fsS --max-time 2 -K - --url "$relay_url/api/unanswered" 2>/dev/null) || exit 0
+
+case "$count" in
+	'' | *[!0-9]*) exit 0 ;;
+esac
+
+if [ "$count" -gt 0 ]; then
+	printf 'Pigeon: %s question(s) from teammates are waiting for the user to answer. Tell the user briefly and suggest /pigeon:inbox, once per session: skip this if you already said it.\n' "$count"
+fi
+
+exit 0

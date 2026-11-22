@@ -1,5 +1,5 @@
 /** The plugin version the marketplace serves. Bump together with `plugins/pigeon/.claude-plugin/plugin.json`. */
-export const LATEST_PLUGIN_VERSION = '0.3.0';
+export const LATEST_PLUGIN_VERSION = '0.4.0';
 
 const UPDATE_COMMAND = 'claude plugin marketplace update pigeon && claude plugin update pigeon@pigeon --scope user';
 
