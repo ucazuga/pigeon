@@ -85,6 +85,12 @@ export type TeamOverview = {
 	/** The owner's own invite while it is not revoked; null when the owner has not joined this team. */
 	readonly owner_invite: Invite | null;
 
+	/** The people to show: invites that are not revoked, the owner's first, then newest first. */
+	readonly people: ReadonlyArray<Invite>;
+
+	/** Seats in use (the owner's seat always counts) and the team's size. */
+	readonly seats: { readonly taken: number; readonly total: number };
+
 	/** Whether a teammate seat is free. The team holds the owner and up to two teammates. */
 	readonly can_invite_teammate: boolean;
 };
@@ -273,12 +279,20 @@ export async function list_owned_teams(owner: Owner): Promise<ReadonlyArray<Team
 		const invites = invite_rows.results.filter((invite) => invite.team_id === team.team_id).map(to_invite);
 		const owner_invite = invites.find((invite) => invite.invitee === 'owner' && invite.status !== 'revoked') ?? null;
 		const teammate_seats = invites.filter((invite) => invite.invitee === 'teammate' && holds_seat(invite)).length;
+		const teammates = invites.filter((invite) => invite.invitee === 'teammate' && invite.status !== 'revoked');
+		let people = teammates;
+
+		if (owner_invite) {
+			people = [owner_invite, ...teammates];
+		}
 
 		return {
 			team_id: team.team_id,
 			name: team.name,
 			invites,
 			owner_invite,
+			people,
+			seats: { taken: 1 + teammate_seats, total: TEAM_SIZE },
 			can_invite_teammate: teammate_seats < TEAM_SIZE - 1,
 		};
 	});

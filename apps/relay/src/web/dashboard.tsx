@@ -35,57 +35,95 @@ function JoinYourself(props: { readonly team_id: string }) {
 			<form method="post" action={`/dashboard/teams/${props.team_id}/invites`} class="inline">
 				<input type="hidden" name="invitee" value="owner" />
 				<input type="text" name="handle" placeholder="your handle, e.g. avni" required />
-				<button type="submit">Join yourself</button>
+				<button type="submit" data-pending="Joining…">
+					Join yourself
+				</button>
 			</form>
 		</div>
 	);
 }
 
-function TeamCard(props: { readonly team: TeamOverview }) {
-	const invites = props.team.invites.filter((invite) => invite.status !== 'revoked');
+function Seats(props: { readonly seats: TeamOverview['seats'] }) {
+	const seat_numbers = Array.from({ length: props.seats.total }, (_, index) => index + 1);
 
 	return (
-		<section class="card">
-			<h2>{props.team.name}</h2>
-			{props.team.owner_invite === null && <JoinYourself team_id={props.team.team_id} />}
-			{props.team.can_invite_teammate && (
-				<form method="post" action={`/dashboard/teams/${props.team.team_id}/invites`} class="inline">
+		<span class="seats">
+			<span class="seat-bar" aria-hidden="true">
+				{seat_numbers.map((seat_number) => {
+					let seat_class = '';
+
+					if (seat_number <= props.seats.taken) {
+						seat_class = 'taken';
+					}
+
+					return <span class={seat_class} />;
+				})}
+			</span>
+			{props.seats.taken} of {props.seats.total} seats
+		</span>
+	);
+}
+
+function Person(props: { readonly team_id: string; readonly invite: Invite }) {
+	const handle = props.invite.handle;
+
+	return (
+		<li class="person" data-handle={handle}>
+			<span class="avatar" aria-hidden="true">
+				{handle.slice(0, 1).toUpperCase()}
+			</span>
+			<span class="who">
+				@{handle}
+				{props.invite.invitee === 'owner' && <span class="you">you</span>}
+			</span>
+			<span class={`status ${props.invite.status}`} data-status={props.invite.status}>
+				{STATUS_LABEL[props.invite.status]}
+			</span>
+			<form method="post" action={`/dashboard/teams/${props.team_id}/members/${handle}/revoke`}>
+				<button type="submit" class="quiet" data-confirm="Remove?">
+					Remove
+				</button>
+			</form>
+		</li>
+	);
+}
+
+function TeamCard(props: { readonly team: TeamOverview }) {
+	const team = props.team;
+
+	return (
+		<section
+			class="card team"
+			data-invites-url={`/dashboard/teams/${team.team_id}/invites`}
+			data-labels={JSON.stringify(STATUS_LABEL)}
+		>
+			<div class="card-head">
+				<h2>{team.name}</h2>
+				<Seats seats={team.seats} />
+			</div>
+			{team.owner_invite === null && <JoinYourself team_id={team.team_id} />}
+			{team.can_invite_teammate && (
+				<form method="post" action={`/dashboard/teams/${team.team_id}/invites`} class="inline">
 					<input type="text" name="handle" placeholder="teammate handle, e.g. ahmet" required />
-					<button type="submit">Invite</button>
+					<button type="submit" data-pending="Inviting…">
+						Invite
+					</button>
 				</form>
 			)}
-			{props.team.can_invite_teammate === false && (
-				<p class="muted">This team is full: up to 3 people, you included. Remove someone to invite another teammate.</p>
+			{team.can_invite_teammate === false && (
+				<p class="full muted">
+					This team is full: up to {team.seats.total} people, you included. Remove someone to invite another teammate.
+				</p>
 			)}
-			{invites.length === 0 && <p class="muted">No teammates yet. Invite someone by the handle they will use.</p>}
-			{invites.length > 0 && (
-				<table>
-					<tbody>
-						{invites.map((invite) => {
-							return (
-								<tr>
-									<td>
-										@{invite.handle}
-										{invite.invitee === 'owner' && <span class="muted"> (you)</span>}
-									</td>
-									<td>
-										<span class={`status ${invite.status}`}>{STATUS_LABEL[invite.status]}</span>
-									</td>
-									<td style="text-align: right;">
-										<form
-											method="post"
-											action={`/dashboard/teams/${props.team.team_id}/members/${invite.handle}/revoke`}
-										>
-											<button type="submit" class="quiet">
-												Remove
-											</button>
-										</form>
-									</td>
-								</tr>
-							);
-						})}
-					</tbody>
-				</table>
+			{team.people.length === 0 && (
+				<p class="empty muted">No one here yet. Invite a teammate by the handle they will use.</p>
+			)}
+			{team.people.length > 0 && (
+				<ul class="people">
+					{team.people.map((invite) => {
+						return <Person team_id={team.team_id} invite={invite} />;
+					})}
+				</ul>
 			)}
 		</section>
 	);
@@ -99,7 +137,9 @@ function CreateTeam() {
 			<form method="post" action="/dashboard/teams" class="inline">
 				<input type="text" name="name" placeholder="Team name" required maxlength={60} />
 				<input type="text" name="handle" placeholder="Your handle, e.g. avni" required />
-				<button type="submit">Create</button>
+				<button type="submit" data-pending="Creating…">
+					Create
+				</button>
 			</form>
 		</section>
 	);
@@ -131,38 +171,13 @@ export function DashboardPage(props: {
 	);
 }
 
-const WATCH_SCRIPT = `
-const status = document.getElementById('status');
-const copy = document.getElementById('copy');
-copy.addEventListener('click', async () => {
-	await navigator.clipboard.writeText(document.getElementById('prompt').textContent);
-	copy.textContent = 'Copied';
-});
-const labels = { claimed: status.dataset.claimed, connected: status.dataset.connected, expired: status.dataset.expired };
-const final_states = ['connected', 'expired'];
-async function poll() {
-	const response = await fetch(status.dataset.url, { headers: { accept: 'application/json' } });
-	if (response.ok) {
-		const invites = await response.json();
-		const invite = invites.find((item) => item.handle === status.dataset.handle);
-		if (invite && labels[invite.status]) {
-			status.textContent = labels[invite.status];
-			if (final_states.includes(invite.status)) {
-				return;
-			}
-		}
-	}
-	setTimeout(poll, 3000);
-}
-poll();
-`;
-
 /** What the invite page says, depending on whether the owner invited a teammate or themselves. */
 function invite_copy(invitee: Invitee, handle: string, team_name: string) {
 	if (invitee === 'owner') {
 		return {
 			title: `Set up Pigeon on your machine`,
 			instructions: `Paste this into your own Claude Code. Your agent sets everything up and joins ${team_name} as @${handle}. It works once, for 7 days, and is shown only now.`,
+			steps: ['Copy the prompt', 'Your agent sets up Pigeon', 'Connected'],
 			waiting: 'Waiting for your agent to pick up the prompt…',
 			claimed: 'Your agent is setting things up…',
 			connected: `Connected. You are in ${team_name} as @${handle}.`,
@@ -173,6 +188,7 @@ function invite_copy(invitee: Invitee, handle: string, team_name: string) {
 	return {
 		title: `Invite @${handle} to ${team_name}`,
 		instructions: `Send this to @${handle}. They paste it into Claude Code, and their agent sets everything up. It works once, for 7 days, and is shown only now.`,
+		steps: [`Send it to @${handle}`, 'Their agent sets up Pigeon', 'Connected'],
 		waiting: 'Waiting for their agent to pick up the prompt…',
 		claimed: 'Their agent is setting things up…',
 		connected: `Connected. @${handle} is in.`,
@@ -202,32 +218,41 @@ export function InviteCreatedPage(props: {
 		<Layout title="Invite · Pigeon">
 			<main class="page">
 				<Header owner={props.owner} />
-				<section class="card">
+				<section
+					class="card invite"
+					data-invites-url={`/dashboard/teams/${props.team_id}/invites`}
+					data-handle={props.handle}
+					data-claimed={copy.claimed}
+					data-connected={copy.connected}
+					data-expired={copy.expired}
+				>
 					<h2>{copy.title}</h2>
 					<p class="muted">{copy.instructions}</p>
+					<ol class="steps" data-status="pending">
+						{copy.steps.map((step) => {
+							return (
+								<li class="step">
+									<span class="mark" aria-hidden="true" />
+									{step}
+								</li>
+							);
+						})}
+					</ol>
 					<pre class="prompt" id="prompt">
 						{props.prompt}
 					</pre>
-					<p>
-						<button type="button" id="copy">
-							Copy
-						</button>
-					</p>
-					<p
-						id="status"
-						data-url={`/dashboard/teams/${props.team_id}/invites`}
-						data-handle={props.handle}
-						data-claimed={copy.claimed}
-						data-connected={copy.connected}
-						data-expired={copy.expired}
-					>
+					<p class="live" id="status" aria-live="polite">
 						{copy.waiting}
 					</p>
-					<p>
-						<a href="/dashboard">Back to dashboard</a>
-					</p>
+					<div class="actions">
+						<button type="button" id="copy" data-copied="Copied ✓">
+							Copy prompt
+						</button>
+						<a class="button secondary" href="/dashboard">
+							Back to dashboard
+						</a>
+					</div>
 				</section>
-				<script dangerouslySetInnerHTML={{ __html: WATCH_SCRIPT }} />
 			</main>
 		</Layout>
 	);

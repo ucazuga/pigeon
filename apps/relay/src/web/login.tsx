@@ -10,14 +10,16 @@ export function LoginPage(props: { readonly error: string | null }) {
 	return (
 		<Layout title="Sign in · Pigeon">
 			<main class="center">
-				<div style="width: 100%; max-width: 380px;">
+				<div class="card">
 					<img src="/pigeon-mark.svg" alt="Pigeon" width="88" height="88" />
 					<h1>Sign in to Pigeon</h1>
 					<p class="muted">We will email you a link. No password needed.</p>
 					{props.error && <p class="error">{props.error}</p>}
 					<form method="post" action="/" class="inline">
 						<input type="email" name="email" placeholder="you@company.com" required autofocus />
-						<button type="submit">Email me a link</button>
+						<button type="submit" data-pending="Sending…">
+							Email me a link
+						</button>
 					</form>
 				</div>
 			</main>
@@ -35,7 +37,7 @@ export function CheckInboxPage(props: { readonly email: string }) {
 	return (
 		<Layout title="Check your inbox · Pigeon">
 			<main class="center">
-				<div>
+				<div class="card">
 					<img src="/pigeon-mark.svg" alt="Pigeon" width="88" height="88" />
 					<h1>Check your inbox</h1>
 					<p class="muted">We sent a sign-in link to {props.email}. It works once and expires in 15 minutes.</p>
@@ -56,12 +58,14 @@ export function ConfirmSignInPage(props: { readonly token: string }) {
 	return (
 		<Layout title="Sign in · Pigeon">
 			<main class="center">
-				<div>
+				<div class="card">
 					<img src="/pigeon-mark.svg" alt="Pigeon" width="88" height="88" />
 					<h1>Sign in to Pigeon</h1>
 					<form method="post" action="/verify">
 						<input type="hidden" name="token" value={props.token} />
-						<button type="submit">Sign in</button>
+						<button type="submit" data-pending="Signing in…">
+							Sign in
+						</button>
 					</form>
 				</div>
 			</main>
