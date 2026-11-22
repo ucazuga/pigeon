@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { MiddlewareHandler } from 'hono';
-import type { Member } from '../../members/member.schema';
 import { PigeonError } from '../../pigeon-error';
+import type { Member } from '../../teams/team.schema';
 import { mark_connected } from '../../teams/team.service';
 import { hash_token } from '../token';
 
@@ -21,13 +21,13 @@ const BEARER_PREFIX = 'Bearer ';
  * @throws {PigeonError} `unauthorized` for a missing, unknown or revoked token.
  */
 export const require_member: MiddlewareHandler<{ Variables: MemberVariables }> = async (context, next) => {
-	const header = context.req.header('Authorization') ?? '';
+	const authorization = context.req.header('Authorization') ?? '';
 
-	if (header.startsWith(BEARER_PREFIX) === false) {
+	if (authorization.startsWith(BEARER_PREFIX) === false) {
 		throw new PigeonError('unauthorized', 'Missing member token');
 	}
 
-	const member = await find_member_by_token(header.slice(BEARER_PREFIX.length));
+	const member = await find_member_by_token(authorization.slice(BEARER_PREFIX.length));
 
 	await mark_connected(member.member_id);
 	context.set('member', member);

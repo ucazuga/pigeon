@@ -1,4 +1,4 @@
--- Threads and their messages. Turn-taking rules live in threads/thread.ts; every state change is a conditional
+-- Threads and their messages. Turn-taking rules live in threads/thread.service.ts; every state change is a conditional
 -- UPDATE on (status, current_message), so two concurrent replies cannot both succeed.
 
 CREATE TABLE threads (

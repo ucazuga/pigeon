@@ -1,4 +1,4 @@
-import type { TeamRoom } from './threads/team-room';
+import type { TeamRoom } from './threads/team-room.durable-object';
 
 declare global {
 	namespace Cloudflare {
@@ -22,13 +22,13 @@ declare global {
 			/** Limits invite claims per IP. */
 			readonly JOIN_LIMITER: RateLimit;
 
-			/** Secret used to sign owner session cookies. */
-			readonly SESSION_SIGNING_KEY: string;
+			/** Secret used to sign owner session cookies. A secret, so unset until `wrangler secret put` runs. */
+			readonly SESSION_SIGNING_KEY?: string;
 
 			/** Owners, teams, invites and member credentials. */
 			readonly DB: D1Database;
 
-			/** One room per team: live connections and thread history. */
+			/** One room per team: live delivery to members who are watching or waiting. */
 			readonly TEAM_ROOM: DurableObjectNamespace<TeamRoom>;
 		}
 	}

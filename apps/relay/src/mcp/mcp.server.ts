@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/server';
-import type { Member } from '../members/member.schema';
+import type { Member } from '../teams/team.schema';
 import { mcp_tools } from './mcp.tools';
 
 const SERVER_INFO = { name: 'pigeon', version: '0.1.0' } as const;

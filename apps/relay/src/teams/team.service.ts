@@ -1,10 +1,9 @@
 import { env } from 'cloudflare:workers';
-import type { OwnerSession } from '../accounts/owner-login.service';
+import type { Owner } from '../auth/owner.service';
 import { read_config } from '../infrastructure/config/config';
 import { type Redacted, redact } from '../infrastructure/redacted';
 import { create_token, hash_token } from '../infrastructure/token';
 import { PigeonError } from '../pigeon-error';
-import * as Invite from './invite';
 
 /*
  * Everything the dashboard and setup flow do with teams: create a team, invite a teammate, revoke one,
@@ -13,11 +12,35 @@ import * as Invite from './invite';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+type InviteBase = {
+	readonly team_id: string;
+	readonly handle: string;
+	readonly created_at: Date;
+
+	/** A pending invite can no longer be claimed after this. */
+	readonly expires_at: Date;
+};
+
+/**
+ * One teammate's onboarding, as the dashboard shows it: pending ("waiting for your agent") → claimed (setup ran,
+ * member token issued) → connected (the member's Claude first reached the relay), or revoked.
+ */
+export type Invite =
+	| (InviteBase & { readonly status: 'pending' })
+	| (InviteBase & { readonly status: 'claimed'; readonly member_id: string; readonly claimed_at: Date })
+	| (InviteBase & {
+			readonly status: 'connected';
+			readonly member_id: string;
+			readonly claimed_at: Date;
+			readonly connected_at: Date;
+	  })
+	| (InviteBase & { readonly status: 'revoked'; readonly member_id: string | null; readonly revoked_at: Date });
+
 type InviteRow = {
 	readonly invite_code_hash: string;
 	readonly team_id: string;
 	readonly handle: string;
-	readonly status: Invite.Invite['status'];
+	readonly status: Invite['status'];
 	readonly member_id: string | null;
 	readonly created_at: string;
 	readonly expires_at: string;
@@ -35,7 +58,7 @@ export type TeamOverview = {
 	readonly name: string;
 
 	/** Every invite with its onboarding state, newest first. */
-	readonly invites: ReadonlyArray<Invite.Invite>;
+	readonly invites: ReadonlyArray<Invite>;
 };
 
 /** What a claimed invite hands to the teammate's machine, exactly once. */
@@ -61,40 +84,62 @@ function date_or_epoch(value: string | null): Date {
 	return new Date(value);
 }
 
-function to_invite(row: InviteRow): Invite.Invite {
-	const base = {
-		team_id: row.team_id,
-		handle: row.handle,
-		created_at: new Date(row.created_at),
-		expires_at: new Date(row.expires_at),
+function to_invite(invite_row: InviteRow): Invite {
+	const invite_fields = {
+		team_id: invite_row.team_id,
+		handle: invite_row.handle,
+		created_at: new Date(invite_row.created_at),
+		expires_at: new Date(invite_row.expires_at),
 	};
 
-	if (row.status === 'pending') {
-		return { ...base, status: 'pending' };
+	if (invite_row.status === 'pending') {
+		return { ...invite_fields, status: 'pending' };
 	}
 
-	if (row.status === 'revoked') {
-		return { ...base, status: 'revoked', member_id: row.member_id, revoked_at: date_or_epoch(row.revoked_at) };
+	if (invite_row.status === 'revoked') {
+		return {
+			...invite_fields,
+			status: 'revoked',
+			member_id: invite_row.member_id,
+			revoked_at: date_or_epoch(invite_row.revoked_at),
+		};
 	}
 
-	if (row.member_id === null) {
-		throw new Error(`Invite for ${row.handle} is ${row.status} without a member`);
+	if (invite_row.member_id === null) {
+		throw new Error(`Invite for ${invite_row.handle} is ${invite_row.status} without a member`);
 	}
 
-	const joined = { ...base, member_id: row.member_id, claimed_at: date_or_epoch(row.claimed_at) };
+	const claimed_fields = {
+		...invite_fields,
+		member_id: invite_row.member_id,
+		claimed_at: date_or_epoch(invite_row.claimed_at),
+	};
 
-	if (row.status === 'claimed') {
-		return { ...joined, status: 'claimed' };
+	if (invite_row.status === 'claimed') {
+		return { ...claimed_fields, status: 'claimed' };
 	}
 
-	return { ...joined, status: 'connected', connected_at: date_or_epoch(row.connected_at) };
+	return { ...claimed_fields, status: 'connected', connected_at: date_or_epoch(invite_row.connected_at) };
+}
+
+/** Why an invite could not be claimed, from the row read before the claim. */
+function claim_refusal(invite_row: InviteRow): string {
+	if (invite_row.status !== 'pending') {
+		return `This invite is already ${invite_row.status}`;
+	}
+
+	if (new Date(invite_row.expires_at) <= new Date()) {
+		return 'This invite has expired; ask your team owner for a new one';
+	}
+
+	return 'This invite was just used';
 }
 
 function is_unique_violation(error: unknown): boolean {
 	return error instanceof Error && error.message.includes('UNIQUE constraint failed');
 }
 
-async function owned_team(owner: OwnerSession, team_id: string): Promise<{ readonly name: string }> {
+async function owned_team(owner: Owner, team_id: string): Promise<{ readonly name: string }> {
 	const team = await env.DB.prepare('SELECT name FROM teams WHERE team_id = ? AND owner_id = ?')
 		.bind(team_id, owner.owner_id)
 		.first<{ readonly name: string }>();
@@ -112,8 +157,8 @@ async function owned_team(owner: OwnerSession, team_id: string): Promise<{ reado
  * @param owner - The signed-in owner.
  * @returns The owner's teams, newest first.
  */
-export async function list_owned_teams(owner: OwnerSession): Promise<ReadonlyArray<TeamOverview>> {
-	const [teams, invites] = await Promise.all([
+export async function list_owned_teams(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
+	const [teams, invite_rows] = await Promise.all([
 		env.DB.prepare('SELECT team_id, name FROM teams WHERE owner_id = ? ORDER BY created_at DESC')
 			.bind(owner.owner_id)
 			.all<{ readonly team_id: string; readonly name: string }>(),
@@ -128,7 +173,7 @@ export async function list_owned_teams(owner: OwnerSession): Promise<ReadonlyArr
 	return teams.results.map((team) => ({
 		team_id: team.team_id,
 		name: team.name,
-		invites: invites.results.filter((row) => row.team_id === team.team_id).map(to_invite),
+		invites: invite_rows.results.filter((invite) => invite.team_id === team.team_id).map(to_invite),
 	}));
 }
 
@@ -139,7 +184,7 @@ export async function list_owned_teams(owner: OwnerSession): Promise<ReadonlyArr
  * @param name - The team's display name (already validated).
  * @returns The new team's ID.
  */
-export async function create_team(owner: OwnerSession, name: string): Promise<string> {
+export async function create_team(owner: Owner, name: string): Promise<string> {
 	const team_id = crypto.randomUUID();
 
 	await env.DB.prepare('INSERT INTO teams (team_id, owner_id, name, created_at) VALUES (?, ?, ?, ?)')
@@ -158,7 +203,7 @@ export async function create_team(owner: OwnerSession, name: string): Promise<st
  * @returns The plaintext invite code, shown once. Only its hash is stored.
  * @throws {PigeonError} `not_found` for an unknown or foreign team; `conflict` when the handle is taken.
  */
-export async function invite_member(owner: OwnerSession, team_id: string, handle: string): Promise<Redacted<string>> {
+export async function invite_member(owner: Owner, team_id: string, handle: string): Promise<Redacted<string>> {
 	await owned_team(owner, team_id);
 
 	const code = create_token();
@@ -196,29 +241,27 @@ export async function invite_member(owner: OwnerSession, team_id: string, handle
  * @param handle - The handle to revoke.
  * @throws {PigeonError} `not_found` for an unknown team or handle.
  */
-export async function revoke_member(owner: OwnerSession, team_id: string, handle: string): Promise<void> {
+export async function revoke_member(owner: Owner, team_id: string, handle: string): Promise<void> {
 	await owned_team(owner, team_id);
 
-	const row = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'")
+	const invite = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'")
 		.bind(team_id, handle)
 		.first<InviteRow>();
 
-	if (row === null) {
+	if (invite === null) {
 		throw new PigeonError('not_found', `@${handle} has no active invite`);
 	}
-
-	Invite.revoke(to_invite(row));
 
 	const now = new Date().toISOString();
 
 	await env.DB.batch([
 		env.DB.prepare("UPDATE invites SET status = 'revoked', revoked_at = ? WHERE invite_code_hash = ?").bind(
 			now,
-			row.invite_code_hash,
+			invite.invite_code_hash,
 		),
 		env.DB.prepare('UPDATE members SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL').bind(
 			now,
-			row.member_id,
+			invite.member_id,
 		),
 	]);
 }
@@ -249,7 +292,8 @@ export async function find_pending_invite(
 
 /**
  * Exchange an invite code for member credentials. Called once during agent-driven setup.
- * Claims with a conditional update and creates the member in the same batch, so a code can only be used once.
+ * Claims with a conditional update (still pending, not expired) and creates the member in the same batch, so a code
+ * can only be used once.
  *
  * @param code - The invite code.
  * @returns Member credentials, issued exactly once.
@@ -257,40 +301,39 @@ export async function find_pending_invite(
  */
 export async function claim_invite(code: Redacted<string>): Promise<MemberCredentials> {
 	const code_hash = await hash_token(code.unwrap());
-	const row = await env.DB.prepare(
+	const invite = await env.DB.prepare(
 		'SELECT invites.*, teams.name AS team_name FROM invites JOIN teams USING (team_id) WHERE invite_code_hash = ?',
 	)
 		.bind(code_hash)
 		.first<InviteRow & { readonly team_name: string }>();
 
-	if (row === null) {
+	if (invite === null) {
 		throw new PigeonError('not_found', 'Unknown invite code');
 	}
 
 	const member_id = crypto.randomUUID();
 	const member_token = create_token();
-	const claimed = Invite.claim(to_invite(row), member_id);
 	const now = new Date().toISOString();
-	const results = await env.DB.batch([
+	const claim_results = await env.DB.batch([
 		env.DB.prepare(
 			`UPDATE invites SET status = 'claimed', member_id = ?, claimed_at = ?
-			 WHERE invite_code_hash = ? AND status = 'pending'`,
-		).bind(member_id, now, code_hash),
+			 WHERE invite_code_hash = ? AND status = 'pending' AND expires_at > ?`,
+		).bind(member_id, now, code_hash, now),
 		env.DB.prepare(
 			`INSERT INTO members (member_id, team_id, handle, token_hash, created_at)
 			 SELECT ?, ?, ?, ?, ? WHERE changes() = 1`,
-		).bind(member_id, row.team_id, claimed.handle, await hash_token(member_token), now),
+		).bind(member_id, invite.team_id, invite.handle, await hash_token(member_token), now),
 	]);
-	const update = results[0] ?? null;
+	const claim_update = claim_results[0] ?? null;
 
-	if (update === null || update.meta.changes !== 1) {
-		throw new PigeonError('conflict', 'This invite was just used');
+	if (claim_update === null || claim_update.meta.changes !== 1) {
+		throw new PigeonError('conflict', claim_refusal(invite));
 	}
 
 	return {
 		relay_url: read_config().public_url.origin,
-		team_name: row.team_name,
-		handle: claimed.handle,
+		team_name: invite.team_name,
+		handle: invite.handle,
 		member_token: redact(member_token),
 	};
 }
