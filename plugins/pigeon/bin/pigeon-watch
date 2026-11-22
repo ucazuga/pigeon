@@ -25,6 +25,7 @@ announce() {
 
 status_file=$(mktemp)
 trap 'rm -f "$status_file"' EXIT
+trap 'exit 0' INT TERM
 
 while true; do
 	started_at=$(date +%s)
