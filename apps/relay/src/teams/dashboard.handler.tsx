@@ -92,25 +92,17 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			const { handle, invitee } = context.req.valid('form');
 
 			try {
-				const invite_code = await team_service.invite_member(owner, team_id, handle, invitee);
-				const teams = await team_service.list_owned(owner);
-				const team = teams.find((candidate) => candidate.team_id === team_id) ?? null;
-
-				let team_name = '';
-
-				if (team) {
-					team_name = team.name;
-				}
+				const invite = await team_service.invite_member(owner, team_id, handle, invitee);
 
 				return context.html(
 					<InviteCreatedPage
 						owner={owner}
 						team_id={team_id}
-						team_name={team_name}
+						team_name={invite.team_name}
 						handle={handle}
 						invitee={invitee}
 						earlier_prompt="none"
-						prompt={render_setup_prompt(read_config().public_url.origin, invite_code.unwrap())}
+						prompt={render_setup_prompt(read_config().public_url.origin, invite.invite_code.unwrap())}
 					/>,
 				);
 			} catch (error) {
@@ -119,12 +111,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 		},
 	)
 	.get('/dashboard/teams/:team_id/invites', async (context) => {
-		const teams = await team_service.list_owned(context.get('owner'));
-		const team = teams.find((candidate) => candidate.team_id === context.req.param('team_id')) ?? null;
-
-		if (team === null) {
-			throw new PigeonError('not_found', 'No such team');
-		}
+		const team = await team_service.find_owned(context.get('owner'), context.req.param('team_id'));
 
 		return context.json(team.invites.map((invite) => ({ handle: invite.handle, status: invite.status })));
 	})
