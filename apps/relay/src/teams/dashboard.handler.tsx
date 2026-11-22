@@ -1,6 +1,7 @@
 import { type Context, Hono } from 'hono';
 import * as zod from 'zod';
 import { read_config } from '../infrastructure/config/config';
+import { type OwnedTeamVariables, require_owned_team } from '../infrastructure/http/owned-team.middleware';
 import { type OwnerVariables, require_owner } from '../infrastructure/http/owner-session.middleware';
 import { validate } from '../infrastructure/http/validate';
 import { PigeonError } from '../pigeon-error';
@@ -28,7 +29,7 @@ function back_with_invalid_input(error: zod.core.$ZodError, context: Context): R
 }
 
 /**
- * The owner dashboard. Every route requires a signed owner session.
+ * The owner dashboard. Every route requires a signed owner session; routes under a team also require owning it.
  *
  * - `GET  /dashboard`                                  teams, invites and their states
  * - `POST /dashboard/teams`                            create a team and the owner's invite; shows their prompt
@@ -37,9 +38,7 @@ function back_with_invalid_input(error: zod.core.$ZodError, context: Context): R
  * - `POST /dashboard/teams/:team_id/members/:handle/prompt`  a new setup prompt for an unused invite
  * - `POST /dashboard/teams/:team_id/members/:handle/revoke`  remove a teammate
  */
-export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
-	.use('/dashboard', require_owner)
-	.use('/dashboard/*', require_owner)
+const owner_routes = new Hono<{ Variables: OwnerVariables }>()
 	.get('/dashboard', async (context) => {
 		const owner = context.get('owner');
 		const teams = await team_service.list(owner);
@@ -78,31 +77,36 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 				return context.redirect(error_redirect_url(error));
 			}
 		},
-	)
+	);
+
+/**
+ * Routes for one team. `require_owned_team` checks that the team belongs to the signed-in owner before any of them run.
+ */
+const team_routes = new Hono<{ Variables: OwnedTeamVariables }>()
+	.use(require_owned_team)
 	.post(
-		'/dashboard/teams/:team_id/invites',
+		'/invites',
 		validate(
 			'form',
 			zod.object({ handle: MEMBER_HANDLE, invitee: zod.enum(['owner', 'teammate']).default('teammate') }),
 			back_with_invalid_input,
 		),
 		async (context) => {
-			const owner = context.get('owner');
-			const team_id = context.req.param('team_id');
+			const team = context.get('team');
 			const { handle, invitee } = context.req.valid('form');
 
 			try {
-				const invite = await team_service.invite(owner, team_id, handle, invitee);
+				const invite_code = await team_service.invite(team, handle, invitee);
 
 				return context.html(
 					<InviteCreatedPage
-						owner={owner}
-						team_id={team_id}
-						team_name={invite.team_name}
+						owner={context.get('owner')}
+						team_id={team.team_id}
+						team_name={team.name}
 						handle={handle}
 						invitee={invitee}
 						earlier_prompt="none"
-						prompt={render_setup_prompt(read_config().public_url.origin, invite.invite_code.unwrap())}
+						prompt={render_setup_prompt(read_config().public_url.origin, invite_code.unwrap())}
 					/>,
 				);
 			} catch (error) {
@@ -110,26 +114,26 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			}
 		},
 	)
-	.get('/dashboard/teams/:team_id/invites', async (context) => {
-		const team = await team_service.get(context.get('owner'), context.req.param('team_id'));
+	.get('/invites', async (context) => {
+		const team = await team_service.get(context.get('team'));
 
 		return context.json(team.invites.map((invite) => ({ handle: invite.handle, status: invite.status })));
 	})
 	.post(
-		'/dashboard/teams/:team_id/members/:handle/prompt',
-		validate('param', zod.object({ team_id: zod.string().min(1), handle: MEMBER_HANDLE }), back_with_invalid_input),
+		'/members/:handle/prompt',
+		validate('param', zod.object({ handle: MEMBER_HANDLE }), back_with_invalid_input),
 		async (context) => {
-			const owner = context.get('owner');
-			const { team_id, handle } = context.req.valid('param');
+			const team = context.get('team');
+			const { handle } = context.req.valid('param');
 
 			try {
-				const invite = await team_service.reissue_invite(owner, team_id, handle);
+				const invite = await team_service.reissue_invite(team, handle);
 
 				return context.html(
 					<InviteCreatedPage
-						owner={owner}
-						team_id={team_id}
-						team_name={invite.team_name}
+						owner={context.get('owner')}
+						team_id={team.team_id}
+						team_name={team.name}
 						handle={handle}
 						invitee={invite.invitee}
 						earlier_prompt="replaced"
@@ -142,13 +146,13 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 		},
 	)
 	.post(
-		'/dashboard/teams/:team_id/members/:handle/revoke',
-		validate('param', zod.object({ team_id: zod.string().min(1), handle: MEMBER_HANDLE }), back_with_invalid_input),
+		'/members/:handle/revoke',
+		validate('param', zod.object({ handle: MEMBER_HANDLE }), back_with_invalid_input),
 		async (context) => {
-			const { team_id, handle } = context.req.valid('param');
+			const { handle } = context.req.valid('param');
 
 			try {
-				await team_service.revoke_member(context.get('owner'), team_id, handle);
+				await team_service.revoke_member(context.get('team'), handle);
 			} catch (error) {
 				return context.redirect(error_redirect_url(error));
 			}
@@ -156,3 +160,9 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			return context.redirect('/dashboard');
 		},
 	);
+
+export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
+	.use('/dashboard', require_owner)
+	.use('/dashboard/*', require_owner)
+	.route('/', owner_routes)
+	.route('/dashboard/teams/:team_id', team_routes);
