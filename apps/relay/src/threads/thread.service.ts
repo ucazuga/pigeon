@@ -163,17 +163,11 @@ async function notify_member(team_id: string, member_id: string, event: RelayEve
 	}
 }
 
-async function handles_by_member_id(team_id: string): Promise<ReadonlyMap<string, string>> {
-	const { results: members } = await env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?')
-		.bind(team_id)
-		.all<{ readonly member_id: string; readonly handle: string }>();
-
-	return new Map(members.map((teammate) => [teammate.member_id, teammate.handle]));
-}
-
 async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView> {
-	const [handles, messages] = await Promise.all([
-		handles_by_member_id(member.team_id),
+	const [teammates, messages] = await Promise.all([
+		env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?')
+			.bind(member.team_id)
+			.all<{ readonly member_id: string; readonly handle: string }>(),
 		env.DB.prepare(
 			`SELECT message_id, sender, kind, body, in_reply_to, sent_at FROM messages
 			 WHERE thread_id = ? ORDER BY sent_at, rowid`,
@@ -181,6 +175,7 @@ async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView
 			.bind(thread.thread_id)
 			.all<MessageRow>(),
 	]);
+	const handles = new Map(teammates.results.map((teammate) => [teammate.member_id, teammate.handle]));
 	const handle_of = (member_id: string) => handles.get(member_id) ?? 'unknown';
 	let open_question: string | null = null;
 

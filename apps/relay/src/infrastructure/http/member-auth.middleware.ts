@@ -27,24 +27,18 @@ export const require_member: MiddlewareHandler<{ Variables: MemberVariables }> =
 		throw new PigeonError('unauthorized', 'Missing member token');
 	}
 
-	const member = await find_member_by_token(authorization.slice(BEARER_PREFIX.length));
-
-	await team_service.mark_connected(member.member_id);
-	context.set('member', member);
-
-	await next();
-};
-
-async function find_member_by_token(token: string): Promise<Member> {
 	const member = await env.DB.prepare(
 		'SELECT team_id, member_id, handle FROM members WHERE token_hash = ? AND revoked_at IS NULL',
 	)
-		.bind(await hash_token(token))
+		.bind(await hash_token(authorization.slice(BEARER_PREFIX.length)))
 		.first<Member>();
 
 	if (member === null) {
 		throw new PigeonError('unauthorized', 'Unknown or revoked member token');
 	}
 
-	return member;
-}
+	await team_service.mark_connected(member.member_id);
+	context.set('member', member);
+
+	await next();
+};
