@@ -12,6 +12,16 @@ import { PigeonError } from '../pigeon-error';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** For now an owner can have one team. */
+const TEAMS_PER_OWNER = 1;
+
+const TEAM_LIMIT_MESSAGE = 'You already have a team. One team per owner for now.';
+
+/** People in a team, the owner included: the owner plus at most this many minus one teammates. */
+const TEAM_SIZE = 3;
+
+const TEAM_FULL_MESSAGE = `This team is full: up to ${TEAM_SIZE} people, you included.`;
+
 /**
  * Who an invite is for. The owner joins their own team through an invite too: owning a team (the dashboard) and
  * being a member of it (Pigeon in your own Claude Code) are separate.
@@ -74,6 +84,9 @@ export type TeamOverview = {
 
 	/** The owner's own invite while it is not revoked; null when the owner has not joined this team. */
 	readonly owner_invite: Invite | null;
+
+	/** Whether a teammate seat is free. The team holds the owner and up to two teammates. */
+	readonly can_invite_teammate: boolean;
 };
 
 /** A new team and the owner's invite into it. */
@@ -183,7 +196,16 @@ function invite_conflict(error: unknown, handle: string): unknown {
 	return new PigeonError('conflict', 'You are already in this team. Remove your row first to join again.');
 }
 
-/** An INSERT for a new pending invite, with the code it stores the hash of. */
+/** Whether an invite takes a place in the team. Revoked and expired invites free theirs. */
+function holds_seat(invite: Invite): boolean {
+	return invite.status !== 'revoked' && invite.status !== 'expired';
+}
+
+/**
+ * An INSERT for a new pending invite, with the code it stores the hash of. A teammate invite inserts nothing when the
+ * teammate seats are taken; the count runs inside the INSERT, so concurrent invites cannot overfill the team. The
+ * owner's own seat is capped by the `invites_active_owner` index instead.
+ */
 async function new_invite(
 	team_id: string,
 	handle: string,
@@ -191,16 +213,26 @@ async function new_invite(
 ): Promise<{ readonly insert: D1PreparedStatement; readonly invite_code: Redacted<string> }> {
 	const invite_code = create_token();
 	const now = Date.now();
+	const created_at = new Date(now).toISOString();
 	const insert = env.DB.prepare(
 		`INSERT INTO invites (invite_code_hash, team_id, handle, invitee, status, created_at, expires_at)
-		 VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+		 SELECT ?, ?, ?, ?, 'pending', ?, ?
+		 WHERE ? = 'owner' OR (
+			SELECT COUNT(*) FROM invites
+			WHERE team_id = ? AND invitee = 'teammate' AND status != 'revoked'
+			AND NOT (status = 'pending' AND expires_at <= ?)
+		 ) < ?`,
 	).bind(
 		await hash_token(invite_code),
 		team_id,
 		handle,
 		invitee,
-		new Date(now).toISOString(),
+		created_at,
 		new Date(now + INVITE_TTL_MS).toISOString(),
+		invitee,
+		team_id,
+		created_at,
+		TEAM_SIZE - 1,
 	);
 
 	return { insert, invite_code: redact(invite_code) };
@@ -240,33 +272,71 @@ export async function list_owned_teams(owner: Owner): Promise<ReadonlyArray<Team
 	return teams.results.map((team) => {
 		const invites = invite_rows.results.filter((invite) => invite.team_id === team.team_id).map(to_invite);
 		const owner_invite = invites.find((invite) => invite.invitee === 'owner' && invite.status !== 'revoked') ?? null;
+		const teammate_seats = invites.filter((invite) => invite.invitee === 'teammate' && holds_seat(invite)).length;
 
-		return { team_id: team.team_id, name: team.name, invites, owner_invite };
+		return {
+			team_id: team.team_id,
+			name: team.name,
+			invites,
+			owner_invite,
+			can_invite_teammate: teammate_seats < TEAM_SIZE - 1,
+		};
 	});
+}
+
+async function count_owned_teams(owner: Owner): Promise<number> {
+	const counted = await env.DB.prepare('SELECT COUNT(*) AS team_count FROM teams WHERE owner_id = ?')
+		.bind(owner.owner_id)
+		.first<{ readonly team_count: number }>();
+
+	return counted?.team_count ?? 0;
+}
+
+/**
+ * Whether the owner may create another team, for showing or hiding the form.
+ *
+ * @param teams - The owner's teams, from {@link list_owned_teams}.
+ * @returns True while the owner is under the team limit.
+ */
+export function can_create_team(teams: ReadonlyArray<TeamOverview>): boolean {
+	return teams.length < TEAMS_PER_OWNER;
 }
 
 /**
  * Create a team owned by the signed-in owner, and the owner's own invite into it, so they can set Pigeon up on their
- * machine first.
+ * machine first. An owner can have one team for now.
  *
  * @param owner - The signed-in owner.
  * @param name - The team's display name (already validated).
  * @param owner_handle - The handle the owner will use in this team (already normalized).
  * @returns The new team and the owner's invite code.
+ * @throws {PigeonError} `conflict` when the owner already has a team.
  */
 export async function create_team(owner: Owner, name: string, owner_handle: string): Promise<CreatedTeam> {
+	if ((await count_owned_teams(owner)) >= TEAMS_PER_OWNER) {
+		throw new PigeonError('conflict', TEAM_LIMIT_MESSAGE);
+	}
+
 	const team_id = crypto.randomUUID();
 	const owner_invite = await new_invite(team_id, owner_handle, 'owner');
 
-	await env.DB.batch([
-		env.DB.prepare('INSERT INTO teams (team_id, owner_id, name, created_at) VALUES (?, ?, ?, ?)').bind(
-			team_id,
-			owner.owner_id,
-			name,
-			new Date().toISOString(),
-		),
-		owner_invite.insert,
-	]);
+	try {
+		// The team insert re-checks the limit, so two concurrent requests cannot both pass. When it inserts nothing,
+		// the invite insert fails on its team foreign key and the whole batch rolls back.
+		await env.DB.batch([
+			env.DB.prepare(
+				`INSERT INTO teams (team_id, owner_id, name, created_at)
+				 SELECT ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM teams WHERE owner_id = ?) < ?`,
+			).bind(team_id, owner.owner_id, name, new Date().toISOString(), owner.owner_id, TEAMS_PER_OWNER),
+			owner_invite.insert,
+		]);
+	} catch (error) {
+		if ((await count_owned_teams(owner)) >= TEAMS_PER_OWNER) {
+			throw new PigeonError('conflict', TEAM_LIMIT_MESSAGE);
+		}
+
+		throw error;
+	}
 
 	return { team_id, invite_code: owner_invite.invite_code };
 }
@@ -279,8 +349,8 @@ export async function create_team(owner: Owner, name: string, owner_handle: stri
  * @param handle - The invitee's handle (already normalized).
  * @param invitee - Whether this is a teammate or the owner themselves.
  * @returns The plaintext invite code, shown once. Only its hash is stored.
- * @throws {PigeonError} `not_found` for an unknown or foreign team; `conflict` when the handle is taken or the owner
- *   is already in the team.
+ * @throws {PigeonError} `not_found` for an unknown or foreign team; `conflict` when the handle is taken, the owner
+ *   is already in the team, or the team is full (the owner and two teammates).
  */
 export async function invite_member(
 	owner: Owner,
@@ -291,11 +361,16 @@ export async function invite_member(
 	await owned_team(owner, team_id);
 
 	const invite = await new_invite(team_id, handle, invitee);
+	let inserted = 0;
 
 	try {
-		await invite.insert.run();
+		inserted = (await invite.insert.run()).meta.changes;
 	} catch (error) {
 		throw invite_conflict(error, handle);
+	}
+
+	if (inserted === 0) {
+		throw new PigeonError('conflict', TEAM_FULL_MESSAGE);
 	}
 
 	return invite.invite_code;
