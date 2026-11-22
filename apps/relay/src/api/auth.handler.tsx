@@ -1,7 +1,9 @@
+import { env } from 'cloudflare:workers';
 import { Hono } from 'hono';
 import * as zod from 'zod';
 import { complete_link, request_link } from '../accounts/owner-login.service';
 import { end_owner_session, start_owner_session } from '../infrastructure/http/owner-session.middleware';
+import { client_ip, enforce_rate_limit } from '../infrastructure/http/rate-limit';
 import { PigeonError } from '../pigeon-error';
 import { CheckInboxPage, ConfirmSignInPage, LoginPage } from '../web/login';
 
@@ -28,8 +30,14 @@ export const auth_routes = new Hono()
 		}
 
 		try {
+			await enforce_rate_limit(env.LOGIN_LIMITER, `ip:${client_ip(context)}`);
+			await enforce_rate_limit(env.LOGIN_LIMITER, `email:${form.data.email}`);
 			await request_link(form.data.email);
 		} catch (error) {
+			if (error instanceof PigeonError && error.code === 'rate_limited') {
+				return context.html(<LoginPage error={error.message} />, 429);
+			}
+
 			if (error instanceof PigeonError) {
 				return context.html(<LoginPage error={error.message} />, 503);
 			}

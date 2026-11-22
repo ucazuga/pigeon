@@ -16,6 +16,12 @@ declare global {
 			/** Cloudflare Email Sending. */
 			readonly EMAIL: SendEmail;
 
+			/** Limits sign-in emails per IP and per address. */
+			readonly LOGIN_LIMITER: RateLimit;
+
+			/** Limits invite claims per IP. */
+			readonly JOIN_LIMITER: RateLimit;
+
 			/** Secret used to sign owner session cookies. */
 			readonly SESSION_SIGNING_KEY: string;
 
