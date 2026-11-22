@@ -90,7 +90,7 @@ export const mcp_tools = {
 			'wait_for_answer',
 			{
 				description:
-					'Wait up to four minutes for a teammate to answer or decline the open question in a thread. ' +
+					'Wait up to 45 seconds for a teammate to answer or decline the open question in a thread. ' +
 					'Returns the thread with the reply, or status still_waiting: then call it again to keep waiting.',
 				inputSchema: zod.object({ thread_id: ID }),
 				annotations: { readOnlyHint: true },
