@@ -445,7 +445,11 @@ export async function open_question(member: Member, thread_id: string): Promise<
 }
 
 /** How long one `wait_for_answer` call waits before asking the caller to call again (under MCP's 5 min idle limit). */
-const WAIT_MS = 4 * 60 * 1000;
+/**
+ * How long one `wait_for_answer` call holds the connection. Kept under Claude Code's MCP request timeout: a longer
+ * wait fails as "operation timed out" on the client instead of returning `still_waiting`.
+ */
+const WAIT_MS = 45 * 1000;
 
 /** Result of waiting for an answer. */
 export type WaitResult =
@@ -453,7 +457,7 @@ export type WaitResult =
 	| { readonly status: 'replied'; readonly thread: ThreadView };
 
 /**
- * Wait for the answer to the asker's open question, for up to four minutes.
+ * Wait for the answer to the asker's open question, for up to 45 seconds.
  *
  * @param member - The asker.
  * @param thread_id - The thread.
