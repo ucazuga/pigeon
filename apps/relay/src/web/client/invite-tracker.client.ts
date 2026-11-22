@@ -2,17 +2,17 @@ import { fade_in, pop } from './animations.client';
 import { poll_invite_statuses, SETTLED_STATUSES, status_of } from './invite-status.client';
 
 /*
- * The invite page: copy the setup prompt, then follow the agent that uses it through the steps
- * (pending → claimed → connected) until it connects or the invite expires.
+ * The invite page: copy the setup prompt (the button, or anywhere on the prompt box), then follow the agent that uses
+ * it (pending → claimed → connected) until it connects or the invite expires.
  */
 
 const COPIED_FOR_MS = 2000;
 
-function copy_prompt_on_click(button: HTMLButtonElement, prompt: Element): void {
+function copy_prompt_on_click(box: HTMLElement, button: HTMLButtonElement, prompt: Element): void {
 	const idle_label = button.textContent ?? '';
 	let reset_timer = 0;
 
-	button.addEventListener('click', async () => {
+	box.addEventListener('click', async () => {
 		await navigator.clipboard.writeText(prompt.textContent ?? '');
 
 		window.clearTimeout(reset_timer);
@@ -27,29 +27,29 @@ function copy_prompt_on_click(button: HTMLButtonElement, prompt: Element): void 
 	});
 }
 
-function show_step(invite: HTMLElement, steps: HTMLElement, status_line: HTMLElement, status: string): void {
+function show_status(invite: HTMLElement, watch: HTMLElement, status_line: HTMLElement, status: string): void {
 	const label = invite.dataset[status] ?? null;
+	const dot = watch.querySelector('.dot');
+	const done = watch.querySelector<HTMLElement>('#done');
 
-	steps.dataset.status = status;
-	pop(Array.from(steps.querySelectorAll('.mark')));
+	watch.dataset.status = status;
 
 	if (label) {
 		status_line.textContent = label;
 		fade_in(status_line);
 	}
 
-	const copy_button = invite.querySelector('#copy');
-	const back = invite.querySelector('.button.secondary');
+	if (dot) {
+		pop(dot);
+	}
 
-	// Once connected the prompt is spent: going back becomes the main action.
-	if (status === 'connected' && copy_button && back) {
-		copy_button.classList.add('secondary');
-		back.classList.remove('secondary');
-		pop(back);
+	if (status === 'connected' && done) {
+		done.hidden = false;
+		pop(done);
 	}
 }
 
-/** Start the invite page's copy button and progress, if the current page is the invite page. */
+/** Start the invite page's copy button and live status, if the current page is the invite page. */
 export function start_invite_tracker(): void {
 	const invite = document.querySelector<HTMLElement>('.invite');
 
@@ -57,26 +57,27 @@ export function start_invite_tracker(): void {
 		return;
 	}
 
+	const box = invite.querySelector<HTMLElement>('.prompt-box');
 	const copy_button = invite.querySelector<HTMLButtonElement>('#copy');
 	const prompt = invite.querySelector('#prompt');
-	const steps = invite.querySelector<HTMLElement>('.steps');
+	const watch = invite.querySelector<HTMLElement>('.watch');
 	const status_line = invite.querySelector<HTMLElement>('#status');
 	const url = invite.dataset.invitesUrl ?? null;
 	const handle = invite.dataset.handle ?? null;
 
-	if (copy_button && prompt) {
-		copy_prompt_on_click(copy_button, prompt);
+	if (box && copy_button && prompt) {
+		copy_prompt_on_click(box, copy_button, prompt);
 	}
 
-	if (steps === null || status_line === null || url === null || handle === null) {
+	if (watch === null || status_line === null || url === null || handle === null) {
 		return;
 	}
 
 	poll_invite_statuses(url, (statuses) => {
 		const status = status_of(statuses, handle);
 
-		if (status && status !== steps.dataset.status) {
-			show_step(invite, steps, status_line, status);
+		if (status && status !== watch.dataset.status) {
+			show_status(invite, watch, status_line, status);
 		}
 
 		return SETTLED_STATUSES.includes(status ?? '') === false;

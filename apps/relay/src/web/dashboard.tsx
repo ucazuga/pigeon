@@ -191,30 +191,28 @@ export function DashboardPage(props: {
 function invite_copy(invitee: Invitee, handle: string, team_name: string) {
 	if (invitee === 'owner') {
 		return {
-			title: `Set up Pigeon on your machine`,
-			instructions: `Paste this into your own Claude Code. Your agent sets everything up and joins ${team_name} as @${handle}. It works once, for 7 days, and is shown only now.`,
-			steps: ['Copy the prompt', 'Your agent sets up Pigeon', 'Connected'],
-			waiting: 'Waiting for your agent to pick up the prompt…',
-			claimed: 'Your agent is setting things up…',
-			connected: `Connected. You are in ${team_name} as @${handle}.`,
-			expired: 'This invite expired. Join again from the dashboard for a new prompt.',
+			title: 'Set up Pigeon on your machine',
+			instructions: `Paste this into your Claude Code. Your agent does the rest and joins ${team_name} as @${handle}.`,
+			waiting: 'Waiting for your agent…',
+			claimed: 'Your agent is setting up Pigeon…',
+			connected: `You are in ${team_name} as @${handle}.`,
+			expired: 'This prompt expired. Get a new one from the dashboard.',
 		};
 	}
 
 	return {
-		title: `Invite @${handle} to ${team_name}`,
-		instructions: `Send this to @${handle}. They paste it into Claude Code, and their agent sets everything up. It works once, for 7 days, and is shown only now.`,
-		steps: [`Send it to @${handle}`, 'Their agent sets up Pigeon', 'Connected'],
-		waiting: 'Waiting for their agent to pick up the prompt…',
-		claimed: 'Their agent is setting things up…',
-		connected: `Connected. @${handle} is in.`,
-		expired: 'This invite expired. Invite them again for a new prompt.',
+		title: `Invite @${handle}`,
+		instructions: `Send this to @${handle}. They paste it into Claude Code, and their agent does the rest.`,
+		waiting: `Waiting for @${handle}'s agent…`,
+		claimed: `@${handle}'s agent is setting up Pigeon…`,
+		connected: `@${handle} is in ${team_name}.`,
+		expired: 'This prompt expired. Get a new one from the dashboard.',
 	};
 }
 
 /**
- * Shown once after an invite is created: the setup prompt, and live progress of the agent that uses it. For the
- * owner's own invite (after creating a team, or "join yourself"), it tells the owner to run it themselves.
+ * Shown after an invite is created or renewed: the setup prompt to copy, and live progress of the agent that uses it.
+ * For the owner's own invite (after creating a team, or "join yourself"), it tells the owner to run it themselves.
  *
  * @param props - The team, the invited handle, who the invite is for, whether it replaces an earlier prompt and the
  *   setup prompt (contains the one-time invite code).
@@ -230,11 +228,19 @@ export function InviteCreatedPage(props: {
 	readonly prompt: string;
 }) {
 	const copy = invite_copy(props.invitee, props.handle, props.team_name);
+	let fine_print = 'Works once and expires in 7 days. Lost it? Get a new one from the dashboard.';
+
+	if (props.earlier_prompt === 'replaced') {
+		fine_print = `New prompt: the earlier one for @${props.handle} no longer works. This one works once and expires in 7 days.`;
+	}
 
 	return (
 		<Layout title="Invite · Pigeon">
 			<main class="page">
 				<Header owner={props.owner} />
+				<a class="back" href="/dashboard">
+					← {props.team_name}
+				</a>
 				<section
 					class="card invite"
 					data-invites-url={`/dashboard/teams/${props.team_id}/invites`}
@@ -243,33 +249,20 @@ export function InviteCreatedPage(props: {
 					data-connected={copy.connected}
 					data-expired={copy.expired}
 				>
-					<h2>{copy.title}</h2>
+					<h1>{copy.title}</h1>
 					<p class="muted">{copy.instructions}</p>
-					{props.earlier_prompt === 'replaced' && (
-						<p class="notice">This is a new prompt. The earlier one for @{props.handle} no longer works.</p>
-					)}
-					<ol class="steps" data-status="pending">
-						{copy.steps.map((step) => {
-							return (
-								<li class="step">
-									<span class="mark" aria-hidden="true" />
-									{step}
-								</li>
-							);
-						})}
-					</ol>
-					<pre class="prompt" id="prompt">
-						{props.prompt}
-					</pre>
-					<p class="live" id="status" aria-live="polite">
-						{copy.waiting}
-					</p>
-					<div class="actions">
+					<div class="prompt-box">
+						<code id="prompt">{props.prompt}</code>
 						<button type="button" id="copy" data-copied="Copied ✓">
-							Copy prompt
+							Copy
 						</button>
-						<a class="button secondary" href="/dashboard">
-							Back to dashboard
+					</div>
+					<p class="fine muted">{fine_print}</p>
+					<div class="watch" data-status="pending" aria-live="polite">
+						<span class="dot" aria-hidden="true" />
+						<span id="status">{copy.waiting}</span>
+						<a class="button" href="/dashboard" id="done" hidden>
+							Done
 						</a>
 					</div>
 				</section>

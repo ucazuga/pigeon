@@ -8,7 +8,7 @@
 	// Bundles the pages' script (src/web/client) into public/js before every `wrangler dev` and `wrangler deploy`.
 	"build": {
 		"command": "bun build src/web/client/pigeon.client.ts --outfile public/js/pigeon.js --minify",
-		"watch_dir": "src/web/client"
+		"watch_dir": "src"
 	},
 	"observability": { "enabled": true },
 	// The hosted relay. Self-hosting: replace with your own domain, or remove to use workers.dev only.
