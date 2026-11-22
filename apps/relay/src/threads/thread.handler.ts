@@ -31,6 +31,8 @@ export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 				summary = { type: 'unanswered_questions', count: await count_unanswered(member) };
 			}
 
+			console.log(JSON.stringify({ event: 'events_opened', first_connect: last_event_id === null, summary }));
+
 			return team_room_of(member.team_id).events(member, last_event_id, summary);
 		},
 	)
