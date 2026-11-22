@@ -1,0 +1,12 @@
+language js
+
+// No optional chaining. Read the value into a variable and branch on it explicitly.
+or {
+	JsStaticMemberExpression() as $access where {
+		$access <: r"(?s).*\?\.#?[A-Za-z_$][A-Za-z0-9_$]*"
+	},
+	`$target?.[$key]` as $access,
+	`$callee?.($arguments)` as $access
+} where {
+	register_diagnostic(span=$access, message="Optional chaining (?.) is not allowed. Read the value into a variable and branch on it with if.")
+}

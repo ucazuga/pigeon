@@ -1,0 +1,6 @@
+language js
+
+// No conditional (ternary) expressions. Branch with if / early return, or assign a default and override it.
+`$condition ? $consequent : $alternate` as $ternary where {
+	register_diagnostic(span=$ternary, message="Ternary is not allowed. Use if / early return, or assign a default and override it inside an if.")
+}

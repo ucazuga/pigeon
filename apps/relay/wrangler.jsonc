@@ -1,0 +1,28 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "pigeon",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-11-01",
+	// Logo and favicon, served as static files before the Worker runs.
+	"assets": { "directory": "./public" },
+	"observability": { "enabled": true },
+	"vars": {
+		// Public origin used in magic links, setup prompts and the marketplace URL.
+		"PUBLIC_URL": "http://localhost:8787",
+		"EMAIL_FROM": "pigeon@example.com"
+		// SESSION_SIGNING_KEY is a secret: `wrangler secret put SESSION_SIGNING_KEY`, or `.dev.vars` locally.
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "pigeon",
+			"database_id": "local",
+			"migrations_dir": "src/infrastructure/d1/migrations"
+		}
+	],
+	"durable_objects": {
+		"bindings": [{ "name": "TEAM_ROOM", "class_name": "TeamRoom" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["TeamRoom"] }]
+	// Email sending binding is added when the magic-link mailer is implemented (Cloudflare Email Service).
+}

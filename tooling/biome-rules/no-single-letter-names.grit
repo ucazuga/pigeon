@@ -1,0 +1,7 @@
+language js
+
+// No single-letter variable, parameter or catch binding names. Generic type parameters (T, K) are allowed.
+JsIdentifierBinding() as $name where {
+	$name <: r"[A-Za-z]",
+	register_diagnostic(span=$name, message="Single-letter names are not allowed. Use a name that says what the value is (profile, error, index).")
+}

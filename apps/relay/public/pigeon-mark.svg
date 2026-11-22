@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pigeon">
+  <rect width="512" height="512" rx="112" fill="#CFE8FF"/>
+  <g transform="translate(10.3 44.6) scale(1.143)">
+    <polygon points="168,214 150,92 214,206" fill="#B4C2D3"/>
+    <polygon points="150,92 190,210 214,206" fill="#C3CEDB"/>
+    <polygon points="128,236 52,206 72,256" fill="#DCE3EC"/>
+    <polygon points="128,236 72,256 60,290" fill="#C3CEDB"/>
+    <polygon points="128,236 60,290 138,286" fill="#D3DBE6"/>
+    <polygon points="122,214 292,196 306,282 138,302" fill="#FFFFFF"/>
+    <polygon points="122,214 212,256 138,302" fill="#F1F4F8"/>
+    <polygon points="292,196 306,282 212,256" fill="#EAEFF5"/>
+    <polygon points="138,302 212,256 306,282" fill="#E2E8F0"/>
+    <polygon points="122,214 292,196 212,256" fill="#FBFCFE"/>
+    <polyline points="122,214 212,256 292,196" fill="none" stroke="#C3CEDB" stroke-width="3" stroke-linejoin="round"/>
+    <polygon points="292,196 318,214 306,282" fill="#D8E0EA"/>
+    <polygon points="292,196 326,136 352,172" fill="#FFFFFF"/>
+    <polygon points="326,136 344,142 352,172" fill="#EEF2F7"/>
+    <polygon points="292,196 352,172 318,214" fill="#DCE3EC"/>
+    <polygon points="352,172 382,180 350,188" fill="#FFB020"/>
+    <polygon points="350,188 382,180 362,192" fill="#E09412"/>
+    <circle cx="330" cy="166" r="5.5" fill="#1F2A44"/>
+    <circle cx="332" cy="164" r="1.8" fill="#FFFFFF"/>
+    <polygon points="176,212 228,66 262,204" fill="#FFFFFF"/>
+    <polygon points="228,66 262,204 300,112" fill="#DCE3EC"/>
+    <polygon points="228,66 300,112 272,84" fill="#EEF2F7"/>
+    <line x1="228" y1="66" x2="262" y2="204" stroke="#C3CEDB" stroke-width="2"/>
+    <line x1="200" y1="148" x2="250" y2="140" stroke="#A9B7C9" stroke-width="2" stroke-dasharray="5 5"/>
+    <polygon points="176,212 262,204 224,224" fill="#E7ECF2"/>
+    <circle cx="212" cy="256" r="15" fill="#E5484D"/>
+    <circle cx="212" cy="256" r="9" fill="none" stroke="#B8323A" stroke-width="2"/>
+    <circle cx="207" cy="251" r="3.5" fill="#FF8A8F"/>
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+language js
+
+// Presence is a truthy check, absence is `=== null`; undefined is avoided in favour of null.
+or {
+	`$value !== null` as $comparison where {
+		register_diagnostic(span=$comparison, message="`!== null` is not allowed. Check presence with `if (value)`, or invert the branches and use `=== null`.")
+	},
+	`$value !== undefined` as $comparison where {
+		register_diagnostic(span=$comparison, message="`!== undefined` is not allowed. Model absence as null and check presence with `if (value)`.")
+	},
+	`$value === undefined` as $comparison where {
+		register_diagnostic(span=$comparison, message="`=== undefined` is not allowed. Model absence as null and compare with `=== null`.")
+	}
+}

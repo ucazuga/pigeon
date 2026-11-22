@@ -1,0 +1,14 @@
+{
+	"name": "pigeon",
+	"owner": {
+		"name": "ucazuga"
+	},
+	"description": "Pigeon: ask your teammates' Claude Code sessions questions. They approve every answer.",
+	"plugins": [
+		{
+			"name": "pigeon",
+			"source": "./plugins/pigeon",
+			"description": "Ask your teammates' Claude Code sessions questions. They approve every answer."
+		}
+	]
+}

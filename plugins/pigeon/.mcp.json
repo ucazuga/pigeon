@@ -1,0 +1,9 @@
+{
+	"mcpServers": {
+		"pigeon": {
+			"type": "http",
+			"url": "${PIGEON_RELAY_URL:-https://pigeon.example}/mcp",
+			"headersHelper": "${CLAUDE_PLUGIN_ROOT}/bin/pigeon-token"
+		}
+	}
+}
