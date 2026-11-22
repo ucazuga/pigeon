@@ -165,7 +165,10 @@ describe('pigeon-token', () => {
 		const matching = await run('pigeon-token', [], { CLAUDE_CODE_MCP_SERVER_URL: 'https://relay.test/mcp' });
 		const other = await run('pigeon-token', [], { CLAUDE_CODE_MCP_SERVER_URL: 'https://attacker.test/mcp' });
 
-		expect(JSON.parse(matching.stdout)).toEqual({ Authorization: 'Bearer tok_secret_value' });
+		expect(JSON.parse(matching.stdout)).toEqual({
+			Authorization: 'Bearer tok_secret_value',
+			'X-Pigeon-Plugin-Version': expect.stringMatching(/^\d+\.\d+\.\d+$/),
+		});
 		expect(other.exit_code).toBe(1);
 		expect(other.stdout).toBe('');
 	});

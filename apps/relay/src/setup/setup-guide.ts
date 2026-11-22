@@ -83,15 +83,24 @@ export function render_setup_guide(input: SetupGuideInput): string {
 		'',
 	];
 
+	lines.push(
+		'## 3. Settings',
+		'',
+		'In `~/.claude/settings.json`, keep every other setting as it is and:',
+		'',
+		'- Set `autoUpdate` to `true` on the `pigeon` entry of `extraKnownMarketplaces` (the marketplace command above',
+		'  created that entry), so Pigeon keeps itself up to date. Claude Code leaves auto-update off for marketplaces',
+		'  it does not ship with.',
+	);
+
 	if (input.origin !== PLUGIN_DEFAULT_RELAY) {
 		lines.push(
-			'## 3. Point the plugin at this relay',
-			'',
-			`Add \`"PIGEON_RELAY_URL": "${input.origin}"\` to the \`env\` object in \`~/.claude/settings.json\`.`,
-			'Create the `env` object if it is missing, and keep every other setting as it is.',
-			'',
+			`- Add \`"PIGEON_RELAY_URL": "${input.origin}"\` to the \`env\` object (create \`env\` if it is missing), so`,
+			'  the plugin talks to this relay.',
 		);
 	}
+
+	lines.push('');
 
 	lines.push(
 		'## Last step: restart',

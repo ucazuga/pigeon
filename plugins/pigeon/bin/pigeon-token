@@ -1,5 +1,5 @@
 #!/bin/sh
-# MCP headersHelper: prints the Authorization header for the Pigeon MCP server as JSON.
+# MCP headersHelper: prints the Authorization and plugin version headers for the Pigeon MCP server as JSON.
 # Refuses unless Claude Code is connecting to the relay this token was issued by, so a misconfigured
 # PIGEON_RELAY_URL can never send the token to a different server.
 set -eu
@@ -15,4 +15,4 @@ if [ "$actual_url" != "$expected_url" ]; then
 	exit 1
 fi
 
-printf '{"Authorization":"Bearer %s"}\n' "$(pigeon_field member_token)"
+printf '{"Authorization":"Bearer %s","X-Pigeon-Plugin-Version":"%s"}\n' "$(pigeon_field member_token)" "$(pigeon_plugin_version)"

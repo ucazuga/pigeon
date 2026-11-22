@@ -43,6 +43,17 @@ announce() {
 		return 0
 	fi
 
+	if [ "$event_type" = "plugin_outdated" ]; then
+		latest=$(printf '%s' "$1" | sed -n 's/.*"latest":"\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p')
+
+		if [ -n "$latest" ]; then
+			printf 'pigeon: Pigeon %s is available. Offer to run: claude plugin marketplace update pigeon && claude plugin update pigeon@pigeon --scope user, then /reload-plugins.\n' "$latest"
+			notify_desktop "Pigeon $latest is available. Ask Claude to update it."
+		fi
+
+		return 0
+	fi
+
 	from=$(printf '%s' "$1" | sed -n 's/.*"from":"\([a-z][a-z0-9-]*\)".*/\1/p')
 
 	if [ -z "$from" ]; then
