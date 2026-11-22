@@ -19,12 +19,14 @@ import { find_or_create_owner } from './owner.service';
  * - `POST /logout`  clear the cookie, back to `/`
  */
 export const auth_routes = new Hono()
-	.get('/', (context) => context.html(<LoginPage error={null} />))
+	.get('/', (context) => {
+		return context.html(<LoginPage error={null} />);
+	})
 	.post(
 		'/',
-		validate('form', zod.object({ email: zod.email().trim().toLowerCase().max(254) }), (_error, context) =>
-			context.html(<LoginPage error="Enter a valid email address." />, 400),
-		),
+		validate('form', zod.object({ email: zod.email().trim().toLowerCase().max(254) }), (_error, context) => {
+			return context.html(<LoginPage error="Enter a valid email address." />, 400);
+		}),
 		async (context) => {
 			const { email } = context.req.valid('form');
 
@@ -47,12 +49,16 @@ export const auth_routes = new Hono()
 			return context.html(<CheckInboxPage email={email} />);
 		},
 	)
-	.get('/verify', (context) => context.html(<ConfirmSignInPage token={context.req.query('token') ?? ''} />))
+	.get('/verify', (context) => {
+		const token = context.req.query('token') ?? '';
+
+		return context.html(<ConfirmSignInPage token={token} />);
+	})
 	.post(
 		'/verify',
-		validate('form', zod.object({ token: zod.string().min(16).max(128) }), (_error, context) =>
-			context.html(<LoginPage error="This sign-in link is not valid. Request a new one." />, 400),
-		),
+		validate('form', zod.object({ token: zod.string().min(16).max(128) }), (_error, context) => {
+			return context.html(<LoginPage error="This sign-in link is not valid. Request a new one." />, 400);
+		}),
 		async (context) => {
 			const { token } = context.req.valid('form');
 

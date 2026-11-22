@@ -23,10 +23,12 @@ type InviteBase = {
 
 /**
  * One teammate's onboarding, as the dashboard shows it: pending ("waiting for your agent") → claimed (setup ran,
- * member token issued) → connected (the member's Claude first reached the relay), or revoked.
+ * member token issued) → connected (the member's Claude first reached the relay), or revoked. A pending invite past
+ * its expiry is expired: it can no longer be claimed.
  */
 export type Invite =
 	| (InviteBase & { readonly status: 'pending' })
+	| (InviteBase & { readonly status: 'expired' })
 	| (InviteBase & { readonly status: 'claimed'; readonly member_id: string; readonly claimed_at: Date })
 	| (InviteBase & {
 			readonly status: 'connected';
@@ -40,7 +42,9 @@ type InviteRow = {
 	readonly invite_code_hash: string;
 	readonly team_id: string;
 	readonly handle: string;
-	readonly status: Invite['status'];
+
+	/** Stored states. `expired` is not stored; it is a pending invite past `expires_at`. */
+	readonly status: 'pending' | 'claimed' | 'connected' | 'revoked';
 	readonly member_id: string | null;
 	readonly created_at: string;
 	readonly expires_at: string;
@@ -91,6 +95,10 @@ function to_invite(invite_row: InviteRow): Invite {
 		created_at: new Date(invite_row.created_at),
 		expires_at: new Date(invite_row.expires_at),
 	};
+
+	if (invite_row.status === 'pending' && invite_fields.expires_at <= new Date()) {
+		return { ...invite_fields, status: 'expired' };
+	}
 
 	if (invite_row.status === 'pending') {
 		return { ...invite_fields, status: 'pending' };

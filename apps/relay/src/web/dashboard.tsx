@@ -2,23 +2,13 @@ import type { Owner } from '../auth/owner.service';
 import type { Invite, TeamOverview } from '../teams/team.service';
 import { Layout } from './layout';
 
-type InviteState = Invite['status'] | 'expired';
-
-const STATUS_LABEL: Readonly<Record<InviteState, string>> = {
+const STATUS_LABEL: Readonly<Record<Invite['status'], string>> = {
 	pending: 'Waiting for their agent',
 	claimed: 'Setting up',
 	connected: 'Connected',
 	revoked: 'Revoked',
 	expired: 'Invite expired',
 };
-
-function state_of(invite: Invite): InviteState {
-	if (invite.status === 'pending' && invite.expires_at.getTime() <= Date.now()) {
-		return 'expired';
-	}
-
-	return invite.status;
-}
 
 function Header(props: { readonly owner: Owner }) {
 	return (
@@ -50,13 +40,11 @@ function TeamCard(props: { readonly team: TeamOverview }) {
 				<table>
 					<tbody>
 						{invites.map((invite) => {
-							const state = state_of(invite);
-
 							return (
 								<tr>
 									<td>@{invite.handle}</td>
 									<td>
-										<span class={`status ${state}`}>{STATUS_LABEL[state]}</span>
+										<span class={`status ${invite.status}`}>{STATUS_LABEL[invite.status]}</span>
 									</td>
 									<td style="text-align: right;">
 										<form
@@ -116,7 +104,12 @@ copy.addEventListener('click', async () => {
 	await navigator.clipboard.writeText(document.getElementById('prompt').textContent);
 	copy.textContent = 'Copied';
 });
-const labels = { claimed: 'Their agent is setting things up…', connected: 'Connected. @' + status.dataset.handle + ' is in.' };
+const labels = {
+	claimed: 'Their agent is setting things up…',
+	connected: 'Connected. @' + status.dataset.handle + ' is in.',
+	expired: 'This invite expired. Invite them again for a new prompt.',
+};
+const final_states = ['connected', 'expired'];
 async function poll() {
 	const response = await fetch(status.dataset.url, { headers: { accept: 'application/json' } });
 	if (response.ok) {
@@ -124,7 +117,7 @@ async function poll() {
 		const invite = invites.find((item) => item.handle === status.dataset.handle);
 		if (invite && labels[invite.status]) {
 			status.textContent = labels[invite.status];
-			if (invite.status === 'connected') {
+			if (final_states.includes(invite.status)) {
 				return;
 			}
 		}
