@@ -12,11 +12,14 @@ import { count_unanswered, open_question } from './thread.service';
  *
  * - `GET /api/events` — Server-Sent Events of `RelayEvent`s (no message text), read by the `pigeon-watch` monitor. A
  *   first connect also gets `ConnectNotice`s.
+ * - `GET /api/unanswered` — how many questions wait for the member's answer, as plain text, read by the
+ *   `pigeon-pending` prompt hook.
  * - `GET /api/threads/:thread_id/question` — the open question as plain text, read by `pigeon-draft` so the question
  *   goes straight to the drafting Claude. Only the member who was asked may read it.
  */
 export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 	.use('/api/events', require_member)
+	.use('/api/unanswered', require_member)
 	.use('/api/threads/*', require_member)
 	.get(
 		'/api/events',
@@ -57,6 +60,11 @@ export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 			return team_room_of(member.team_id).events(member, last_event_id, notices);
 		},
 	)
+	.get('/api/unanswered', async (context) => {
+		const unanswered = await count_unanswered(context.get('member'));
+
+		return context.text(String(unanswered));
+	})
 	.get(
 		'/api/threads/:thread_id/question',
 		validate('param', zod.object({ thread_id: zod.string().min(1).max(64) })),
