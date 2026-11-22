@@ -32,6 +32,8 @@ button:disabled { opacity: 0.6; cursor: progress; }
 .secondary:hover, button.secondary:hover { background: #EDF1F7; }
 button.quiet { background: transparent; color: var(--danger); padding: 5px 10px; font-size: 14px; }
 button.quiet:hover { background: #FBE4E5; }
+button.quiet.neutral { color: var(--muted); }
+button.quiet.neutral:hover { background: var(--soft); color: var(--ink); }
 button.quiet.armed { background: var(--danger); color: #fff; }
 button.copied { background: #1B6B35; }
 .seats { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }

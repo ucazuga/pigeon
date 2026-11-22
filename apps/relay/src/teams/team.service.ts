@@ -395,6 +395,75 @@ export async function invite_member(
 	return invite.invite_code;
 }
 
+/** A fresh setup prompt for an invite nobody has used yet. */
+export type ReissuedInvite = {
+	/** The team's display name. */
+	readonly team_name: string;
+
+	/** Who the invite is for. */
+	readonly invitee: Invitee;
+
+	/** The new one-time code. The earlier code no longer works. */
+	readonly invite_code: Redacted<string>;
+};
+
+/**
+ * Give an unused invite a new code and a new 7-day window. Only the code's hash is stored, so an earlier prompt cannot
+ * be shown again; this replaces it instead, and the earlier code stops working. Renewing an expired teammate invite
+ * takes a seat again, so it is refused when the team is full; the check runs inside the UPDATE.
+ *
+ * @param owner - The signed-in owner.
+ * @param team_id - The team.
+ * @param handle - Whose invite to renew.
+ * @returns The new code, with what the invite page needs.
+ * @throws {PigeonError} `not_found` for an unknown team or handle, `conflict` when the invite was already used or the
+ *   team is full.
+ */
+export async function reissue_invite(owner: Owner, team_id: string, handle: string): Promise<ReissuedInvite> {
+	const team = await owned_team(owner, team_id);
+	const invite_row = await env.DB.prepare(
+		"SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'",
+	)
+		.bind(team_id, handle)
+		.first<InviteRow>();
+
+	if (invite_row === null) {
+		throw new PigeonError('not_found', `@${handle} has no active invite`);
+	}
+
+	if (invite_row.status !== 'pending') {
+		throw new PigeonError('conflict', `@${handle} already used their prompt. Remove them to start over.`);
+	}
+
+	const invite_code = create_token();
+	const now = new Date();
+	const renewal = await env.DB.prepare(
+		`UPDATE invites SET invite_code_hash = ?, expires_at = ?
+		 WHERE invite_code_hash = ? AND status = 'pending'
+		 AND (invitee = 'owner' OR expires_at > ? OR (
+			SELECT COUNT(*) FROM invites
+			WHERE team_id = ? AND invitee = 'teammate' AND status != 'revoked'
+			AND NOT (status = 'pending' AND expires_at <= ?)
+		 ) < ?)`,
+	)
+		.bind(
+			await hash_token(invite_code),
+			new Date(now.getTime() + INVITE_TTL_MS).toISOString(),
+			invite_row.invite_code_hash,
+			now.toISOString(),
+			team_id,
+			now.toISOString(),
+			TEAM_SIZE - 1,
+		)
+		.run();
+
+	if (renewal.meta.changes === 0) {
+		throw new PigeonError('conflict', TEAM_FULL_MESSAGE);
+	}
+
+	return { team_name: team.name, invitee: invite_row.invitee, invite_code: redact(invite_code) };
+}
+
 /**
  * Revoke a teammate: their invite, and their member token if they joined. Their handle can be invited again.
  *
