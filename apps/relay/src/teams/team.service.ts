@@ -289,7 +289,12 @@ async function count_owned_teams(owner: Owner): Promise<number> {
 		.bind(owner.owner_id)
 		.first<{ readonly team_count: number }>();
 
-	return counted?.team_count ?? 0;
+	// COUNT(*) always returns a row; null only satisfies the driver's type.
+	if (counted === null) {
+		return 0;
+	}
+
+	return counted.team_count;
 }
 
 /**
