@@ -1,5 +1,5 @@
 #!/bin/sh
-# Plugin monitor: tells Claude when a teammate asks or answers. Each line printed here reaches Claude directly,
+# Plugin monitor: tells Claude (and the desktop) when a teammate asks or answers. Each line printed here reaches Claude directly,
 # so it prints only WHO and WHAT HAPPENED, from a fixed template — never message text. Question and answer text
 # reach Claude only through the MCP tools, when the person opens /pigeon:inbox or asks for the answer.
 set -u
@@ -8,8 +8,41 @@ pigeon_require_credentials
 relay_url=$(pigeon_field relay_url)
 delay=1
 
+# A desktop notification too, so a question is noticed while the terminal is in the background. The text comes from
+# the same fixed templates (a handle that matched the handle format, or a number) and is passed as an argument, never
+# spliced into a script.
+notify_desktop() {
+	if [ "${PIGEON_DESKTOP_NOTIFICATIONS:-on}" = "off" ]; then
+		return 0
+	fi
+
+	case "$(uname -s)" in
+		Darwin)
+			osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "Pigeon"' -e 'end run' \
+				"$1" >/dev/null 2>&1 || true
+			;;
+		Linux)
+			if command -v notify-send >/dev/null 2>&1; then
+				notify-send Pigeon "$1" >/dev/null 2>&1 || true
+			fi
+			;;
+	esac
+}
+
 announce() {
 	event_type=$(printf '%s' "$1" | sed -n 's/.*"type":"\([a-z_]*\)".*/\1/p')
+
+	if [ "$event_type" = "unanswered_questions" ]; then
+		count=$(printf '%s' "$1" | sed -n 's/.*"count":\([0-9][0-9]*\).*/\1/p')
+
+		if [ -n "$count" ]; then
+			printf 'pigeon: %s question(s) from teammates are waiting for your answer. Run /pigeon:inbox to see them.\n' "$count"
+			notify_desktop "$count question(s) from teammates are waiting for your answer."
+		fi
+
+		return 0
+	fi
+
 	from=$(printf '%s' "$1" | sed -n 's/.*"from":"\([a-z][a-z0-9-]*\)".*/\1/p')
 
 	if [ -z "$from" ]; then
@@ -17,25 +50,46 @@ announce() {
 	fi
 
 	case "$event_type" in
-		question_received) printf 'pigeon: @%s asked you a question. Run /pigeon:inbox to see it.\n' "$from" ;;
-		answer_received) printf 'pigeon: @%s answered your question.\n' "$from" ;;
-		question_declined) printf 'pigeon: @%s declined your question.\n' "$from" ;;
+		question_received)
+			printf 'pigeon: @%s asked you a question. Run /pigeon:inbox to see it.\n' "$from"
+			notify_desktop "@$from asked you a question."
+			;;
+		answer_received)
+			printf 'pigeon: @%s answered your question.\n' "$from"
+			notify_desktop "@$from answered your question."
+			;;
+		question_declined)
+			printf 'pigeon: @%s declined your question.\n' "$from"
+			notify_desktop "@$from declined your question."
+			;;
 	esac
 }
 
 status_file=$(mktemp)
-trap 'rm -f "$status_file"' EXIT
+# The last event id seen, kept across reconnects: the relay replays what was missed and sends the "waiting
+# questions" summary only on the first connect of a session.
+last_id_file=$(mktemp)
+trap 'rm -f "$status_file" "$last_id_file"' EXIT
 trap 'exit 0' INT TERM
 
 while true; do
 	started_at=$(date +%s)
 	: >"$status_file"
 
-	pigeon_auth_config |
+	last_id=$(cat "$last_id_file")
+
+	{
+		pigeon_auth_config
+
+		if pigeon_is_id "$last_id"; then
+			printf 'header = "Last-Event-ID: %s"\n' "$last_id"
+		fi
+	} |
 		curl -sSN -K - -H 'accept: text/event-stream' -w '\npigeon-http-status %{http_code}\n' \
 			--url "$relay_url/api/events" 2>/dev/null |
 		while IFS= read -r line; do
 			case "$line" in
+				id:*) printf '%s' "${line#id: }" >"$last_id_file" ;;
 				data:*) announce "${line#data:}" ;;
 				'pigeon-http-status '*) printf '%s' "${line#pigeon-http-status }" >"$status_file" ;;
 			esac

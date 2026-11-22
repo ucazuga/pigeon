@@ -26,3 +26,10 @@ export type RelayEvent =
 	| (ThreadMessage & { readonly type: 'question_received' })
 	| (ThreadMessage & { readonly type: 'answer_received'; readonly in_reply_to: string })
 	| (ThreadMessage & { readonly type: 'question_declined'; readonly in_reply_to: string });
+
+/**
+ * Sent once when a monitor connects without `Last-Event-ID` (a new Claude Code session): how many questions are
+ * waiting for this member, so ones that arrived while no session was open are not missed. It has no event id, so it
+ * does not move the client's `Last-Event-ID`.
+ */
+export type UnansweredSummary = { readonly type: 'unanswered_questions'; readonly count: number };
