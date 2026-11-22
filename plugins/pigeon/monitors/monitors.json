@@ -1,0 +1,7 @@
+[
+	{
+		"name": "pigeon-inbox",
+		"command": "\"${CLAUDE_PLUGIN_ROOT}/bin/pigeon-watch\"",
+		"description": "New Pigeon questions from teammates"
+	}
+]

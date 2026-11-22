@@ -1,0 +1,6 @@
+language js
+
+// Ask the explicit question instead of negating. `if (!value)` hides whether null, false, 0 or '' is meant.
+`!$operand` as $negation where {
+	register_diagnostic(span=$negation, message="Implicit negation (!x) is not allowed. Write the explicit question: `=== null`, `=== false`, `.length === 0`, `=== ''`.")
+}

@@ -1,0 +1,51 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"plugins": [
+		"./tooling/biome-rules/no-ternary.grit",
+		"./tooling/biome-rules/no-optional-chaining.grit",
+		"./tooling/biome-rules/no-implicit-negation.grit",
+		"./tooling/biome-rules/no-null-inequality.grit",
+		"./tooling/biome-rules/no-single-letter-names.grit"
+	],
+	"files": {
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/.wrangler",
+			"!**/dist",
+			"!**/worker-configuration.d.ts"
+		]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab"
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"style": {
+				"useBlockStatements": "error",
+				"noNonNullAssertion": "error"
+			},
+			"complexity": {
+				"useOptionalChain": "off"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "single",
+			"lineWidth": 120,
+			"trailingCommas": "all"
+		}
+	},
+	"assist": {
+		"enabled": true,
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	}
+}

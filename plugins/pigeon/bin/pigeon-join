@@ -1,0 +1,60 @@
+#!/bin/sh
+# usage: pigeon-join [--force] <invite-code> <relay-url>
+# Exchanges a single-use invite code for a member token and writes it to ~/.pigeon/credentials.json (mode 600).
+# The token is never printed, so it never appears in the agent's transcript.
+set -eu
+. "$(dirname "$0")/pigeon-credentials"
+
+force=no
+
+if [ "${1:-}" = "--force" ]; then
+	force=yes
+	shift
+fi
+
+if [ "$#" -ne 2 ]; then
+	echo "usage: pigeon-join [--force] <invite-code> <relay-url>" >&2
+	exit 2
+fi
+
+invite_code=$1
+relay_url=${2%/}
+
+if ! pigeon_is_id "$invite_code"; then
+	echo "pigeon-join: that does not look like an invite code." >&2
+	exit 2
+fi
+
+# Tokens only travel over HTTPS; plain HTTP is allowed for a relay running on this machine.
+case "$relay_url" in
+	https://*) protocols='=https' ;;
+	http://localhost | http://localhost:* | http://127.0.0.1 | http://127.0.0.1:*) protocols='=http' ;;
+	*)
+		echo "pigeon-join: the relay URL must start with https://" >&2
+		exit 2
+		;;
+esac
+
+if [ -e "$PIGEON_CREDENTIALS" ] && [ "$force" = "no" ]; then
+	echo "pigeon-join: already joined \"$(pigeon_field team_name)\" as @$(pigeon_field handle)." >&2
+	echo "pigeon-join: run with --force to replace it." >&2
+	exit 1
+fi
+
+umask 077
+mkdir -p "$PIGEON_HOME"
+temporary_file="$PIGEON_CREDENTIALS.tmp"
+trap 'rm -f "$temporary_file"' EXIT
+
+# The invite code goes in the body via stdin, not argv, so it does not show up in `ps`.
+printf '{"invite_code":"%s"}' "$invite_code" |
+	curl -fsS --proto "$protocols" -X POST -H 'content-type: application/json' --data-binary @- \
+		--url "$relay_url/api/join" -o "$temporary_file"
+
+if ! grep -q '"member_token":"[^"]' "$temporary_file"; then
+	echo "pigeon-join: the relay did not return credentials. Check the relay URL." >&2
+	exit 1
+fi
+
+mv "$temporary_file" "$PIGEON_CREDENTIALS"
+echo "Joined team \"$(pigeon_field team_name)\" as @$(pigeon_field handle)."

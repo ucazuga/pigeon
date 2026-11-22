@@ -1,0 +1,18 @@
+#!/bin/sh
+# MCP headersHelper: prints the Authorization header for the Pigeon MCP server as JSON.
+# Refuses unless Claude Code is connecting to the relay this token was issued by, so a misconfigured
+# PIGEON_RELAY_URL can never send the token to a different server.
+set -eu
+. "$(dirname "$0")/pigeon-credentials"
+pigeon_require_credentials
+
+expected_url="$(pigeon_field relay_url)/mcp"
+actual_url="${CLAUDE_CODE_MCP_SERVER_URL:-}"
+
+if [ "$actual_url" != "$expected_url" ]; then
+	echo "pigeon: refusing to send your token to ${actual_url:-an unknown server}; you joined $expected_url." >&2
+	echo "pigeon: set PIGEON_RELAY_URL=$(pigeon_field relay_url) for Claude Code." >&2
+	exit 1
+fi
+
+printf '{"Authorization":"Bearer %s"}\n' "$(pigeon_field member_token)"

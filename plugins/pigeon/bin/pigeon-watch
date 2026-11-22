@@ -1,0 +1,58 @@
+#!/bin/sh
+# Plugin monitor: tells Claude when a teammate asks or answers. Each line printed here reaches Claude directly,
+# so it prints only WHO and WHAT HAPPENED, from a fixed template — never message text. Question and answer text
+# reach Claude only through the MCP tools, when the person opens /pigeon:inbox or asks for the answer.
+set -u
+. "$(dirname "$0")/pigeon-credentials"
+pigeon_require_credentials
+relay_url=$(pigeon_field relay_url)
+delay=1
+
+announce() {
+	event_type=$(printf '%s' "$1" | sed -n 's/.*"type":"\([a-z_]*\)".*/\1/p')
+	from=$(printf '%s' "$1" | sed -n 's/.*"from":"\([a-z][a-z0-9-]*\)".*/\1/p')
+
+	if [ -z "$from" ]; then
+		return 0
+	fi
+
+	case "$event_type" in
+		question_received) printf 'pigeon: @%s asked you a question. Run /pigeon:inbox to see it.\n' "$from" ;;
+		answer_received) printf 'pigeon: @%s answered your question.\n' "$from" ;;
+		question_declined) printf 'pigeon: @%s declined your question.\n' "$from" ;;
+	esac
+}
+
+status_file=$(mktemp)
+trap 'rm -f "$status_file"' EXIT
+
+while true; do
+	started_at=$(date +%s)
+	: >"$status_file"
+
+	pigeon_auth_config |
+		curl -sSN -K - -H 'accept: text/event-stream' -w '\npigeon-http-status %{http_code}\n' \
+			--url "$relay_url/api/events" 2>/dev/null |
+		while IFS= read -r line; do
+			case "$line" in
+				data:*) announce "${line#data:}" ;;
+				'pigeon-http-status '*) printf '%s' "${line#pigeon-http-status }" >"$status_file" ;;
+			esac
+		done
+
+	if [ "$(cat "$status_file")" = "401" ]; then
+		echo "pigeon: your membership was revoked or your token is invalid. Ask your team owner for a new invite." >&2
+		exit 1
+	fi
+
+	# A connection that stayed up for a while was healthy: reconnect quickly next time.
+	if [ "$(($(date +%s) - started_at))" -gt 60 ]; then
+		delay=1
+	fi
+
+	sleep "$delay"
+
+	if [ "$delay" -lt 60 ]; then
+		delay=$((delay * 2))
+	fi
+done

@@ -1,0 +1,23 @@
+{
+	"name": "pigeon",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"packageManager": "bun@1.4.4",
+	"workspaces": [
+		"apps/*"
+	],
+	"scripts": {
+		"typecheck": "bun run --filter '*' typecheck && tsc --noEmit -p tests",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"test": "bun test"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.4",
+		"@types/bun": "1.4.5",
+		"fast-check": "4.11.0",
+		"typescript": "5.9.2"
+	},
+	"license": "AGPL-3.0-only"
+}
