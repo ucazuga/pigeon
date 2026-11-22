@@ -5,7 +5,7 @@ import { validate } from '../infrastructure/http/validate';
 import { LATEST_PLUGIN_VERSION, plugin_update_notice } from '../setup/plugin-version';
 import { team_room_of } from './team-room.durable-object';
 import type { ConnectNotice } from './thread.schema';
-import { count_unanswered, open_question } from './thread.service';
+import * as thread_service from './thread.service';
 
 /**
  * Member endpoints used by the plugin scripts rather than by Claude:
@@ -44,7 +44,7 @@ export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 
 			// A first connect is a new session: tell it what it missed while no session was listening.
 			if (last_event_id === null) {
-				const unanswered = await count_unanswered(member);
+				const unanswered = await thread_service.count_unanswered(member);
 
 				if (unanswered > 0) {
 					notices.push({ type: 'unanswered_questions', count: unanswered });
@@ -61,7 +61,7 @@ export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 		},
 	)
 	.get('/api/unanswered', async (context) => {
-		const unanswered = await count_unanswered(context.get('member'));
+		const unanswered = await thread_service.count_unanswered(context.get('member'));
 
 		return context.text(String(unanswered));
 	})
@@ -70,7 +70,7 @@ export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 		validate('param', zod.object({ thread_id: zod.string().min(1).max(64) })),
 		async (context) => {
 			const { thread_id } = context.req.valid('param');
-			const question = await open_question(context.get('member'), thread_id);
+			const question = await thread_service.open_question(context.get('member'), thread_id);
 
 			return context.text(question);
 		},

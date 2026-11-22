@@ -6,8 +6,8 @@ import { client_ip, enforce_rate_limit } from '../infrastructure/http/rate-limit
 import { validate } from '../infrastructure/http/validate';
 import { PigeonError } from '../pigeon-error';
 import { CheckInboxPage, ConfirmSignInPage, LoginPage } from '../web/login';
-import { consume_link, request_link } from './magic-link.service';
-import { find_or_create_owner } from './owner.service';
+import * as magic_link_service from './magic-link.service';
+import * as owner_service from './owner.service';
 
 /**
  * Owner sign-in pages and magic-link callbacks.
@@ -33,7 +33,7 @@ export const auth_routes = new Hono()
 			try {
 				await enforce_rate_limit(env.LOGIN_LIMITER, `ip:${client_ip(context)}`);
 				await enforce_rate_limit(env.LOGIN_LIMITER, `email:${email}`);
-				await request_link(email);
+				await magic_link_service.request_link(email);
 			} catch (error) {
 				if (error instanceof PigeonError && error.code === 'rate_limited') {
 					return context.html(<LoginPage error={error.message} />, 429);
@@ -63,9 +63,9 @@ export const auth_routes = new Hono()
 			const { token } = context.req.valid('form');
 
 			try {
-				const email = await consume_link(token);
+				const email = await magic_link_service.consume_link(token);
 
-				await start_owner_session(context, await find_or_create_owner(email));
+				await start_owner_session(context, await owner_service.find_or_create_owner(email));
 			} catch (error) {
 				if (error instanceof PigeonError) {
 					return context.html(<LoginPage error={`${error.message}. Request a new one.`} />, 401);

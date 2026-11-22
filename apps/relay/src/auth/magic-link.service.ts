@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { read_config } from '../infrastructure/config/config';
-import { send_magic_link } from '../infrastructure/email/email.service';
+import * as email_service from '../infrastructure/email/email.service';
 import { create_token, hash_token } from '../infrastructure/token';
 import { PigeonError } from '../pigeon-error';
 
@@ -28,7 +28,7 @@ export async function request_link(email: string): Promise<void> {
 	const sign_in_url = new URL('/verify', read_config().public_url);
 
 	sign_in_url.searchParams.set('token', token);
-	await send_magic_link(email, sign_in_url);
+	await email_service.send_magic_link(email, sign_in_url);
 }
 
 /**

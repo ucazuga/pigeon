@@ -5,7 +5,7 @@ import { read_config } from '../infrastructure/config/config';
 import { client_ip, enforce_rate_limit } from '../infrastructure/http/rate-limit';
 import { validate } from '../infrastructure/http/validate';
 import { redact } from '../infrastructure/redacted';
-import { claim_invite, find_pending_invite } from '../teams/team.service';
+import * as team_service from '../teams/team.service';
 import { render_setup_guide } from './setup-guide';
 
 const INVITE_CODE = zod.string().regex(/^[A-Za-z0-9_-]{16,128}$/, 'not an invite code');
@@ -37,7 +37,7 @@ export const setup_routes = new Hono()
 		),
 		async (context) => {
 			const invite_code = context.req.valid('param').file;
-			const invite = await find_pending_invite(invite_code);
+			const invite = await team_service.find_pending_invite(invite_code);
 			const guide = render_setup_guide({
 				origin: read_config().public_url.origin,
 				invite_code,
@@ -49,7 +49,7 @@ export const setup_routes = new Hono()
 		},
 	)
 	.post('/api/join', limit_joins, validate('json', zod.object({ invite_code: INVITE_CODE })), async (context) => {
-		const credentials = await claim_invite(redact(context.req.valid('json').invite_code));
+		const credentials = await team_service.claim_invite(redact(context.req.valid('json').invite_code));
 
 		// One line of JSON in a fixed key order: the plugin scripts read it with sed, without jq.
 		return context.body(

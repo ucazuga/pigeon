@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie';
-import { find_owner, type Owner } from '../../auth/owner.service';
+import type { Owner } from '../../auth/owner.service';
+import * as owner_service from '../../auth/owner.service';
 import { read_config } from '../config/config';
 
 /** Hono variables set by {@link require_owner}. */
@@ -31,7 +32,7 @@ async function signed_in_owner(context: Context): Promise<Owner | null> {
 		return null;
 	}
 
-	return find_owner(owner_id);
+	return owner_service.find_owner(owner_id);
 }
 
 /** Hono middleware for dashboard pages: require a signed-in owner, or clear the cookie and go to sign-in at `/`. */

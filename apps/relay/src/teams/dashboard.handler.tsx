@@ -7,14 +7,7 @@ import { PigeonError } from '../pigeon-error';
 import { render_setup_prompt } from '../setup/setup-guide';
 import { DashboardPage, InviteCreatedPage } from '../web/dashboard';
 import { MEMBER_HANDLE } from './team.schema';
-import {
-	can_create_team,
-	create_team,
-	invite_member,
-	list_owned_teams,
-	reissue_invite,
-	revoke_member,
-} from './team.service';
+import * as team_service from './team.service';
 
 function dashboard_with_error(message: string): string {
 	return `/dashboard?error=${encodeURIComponent(message)}`;
@@ -49,11 +42,11 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 	.use('/dashboard/*', require_owner)
 	.get('/dashboard', async (context) => {
 		const owner = context.get('owner');
-		const teams = await list_owned_teams(owner);
+		const teams = await team_service.list_owned(owner);
 		const error = context.req.query('error') ?? null;
 
 		return context.html(
-			<DashboardPage owner={owner} teams={teams} can_create_team={can_create_team(teams)} error={error} />,
+			<DashboardPage owner={owner} teams={teams} can_create_team={team_service.can_create(teams)} error={error} />,
 		);
 	})
 	.post(
@@ -68,7 +61,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			const { name, handle } = context.req.valid('form');
 
 			try {
-				const team = await create_team(owner, name, handle);
+				const team = await team_service.create(owner, name, handle);
 
 				return context.html(
 					<InviteCreatedPage
@@ -99,8 +92,8 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			const { handle, invitee } = context.req.valid('form');
 
 			try {
-				const invite_code = await invite_member(owner, team_id, handle, invitee);
-				const teams = await list_owned_teams(owner);
+				const invite_code = await team_service.invite_member(owner, team_id, handle, invitee);
+				const teams = await team_service.list_owned(owner);
 				const team = teams.find((candidate) => candidate.team_id === team_id) ?? null;
 
 				let team_name = '';
@@ -126,7 +119,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 		},
 	)
 	.get('/dashboard/teams/:team_id/invites', async (context) => {
-		const teams = await list_owned_teams(context.get('owner'));
+		const teams = await team_service.list_owned(context.get('owner'));
 		const team = teams.find((candidate) => candidate.team_id === context.req.param('team_id')) ?? null;
 
 		if (team === null) {
@@ -143,7 +136,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			const { team_id, handle } = context.req.valid('param');
 
 			try {
-				const invite = await reissue_invite(owner, team_id, handle);
+				const invite = await team_service.reissue_invite(owner, team_id, handle);
 
 				return context.html(
 					<InviteCreatedPage
@@ -168,7 +161,7 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 			const { team_id, handle } = context.req.valid('param');
 
 			try {
-				await revoke_member(context.get('owner'), team_id, handle);
+				await team_service.revoke_member(context.get('owner'), team_id, handle);
 			} catch (error) {
 				return context.redirect(back_with_error(error));
 			}
