@@ -130,6 +130,15 @@ export type MemberCredentials = {
 	readonly member_token: Redacted<string>;
 };
 
+/** A fresh setup prompt for an invite nobody has used yet. */
+export type ReissuedInvite = {
+	/** Who the invite is for. */
+	readonly invitee: Invitee;
+
+	/** The new one-time code. The earlier code no longer works. */
+	readonly invite_code: Redacted<string>;
+};
+
 function to_invite(invite_row: InviteRow): Invite {
 	const invite_fields = {
 		team_id: invite_row.team_id,
@@ -371,15 +380,6 @@ export async function invite(team: OwnedTeam, handle: string, invitee: Invitee):
 
 	return invite.invite_code;
 }
-
-/** A fresh setup prompt for an invite nobody has used yet. */
-export type ReissuedInvite = {
-	/** Who the invite is for. */
-	readonly invitee: Invitee;
-
-	/** The new one-time code. The earlier code no longer works. */
-	readonly invite_code: Redacted<string>;
-};
 
 /**
  * Give an unused invite a new code and a new 7-day window. Only the code's hash is stored, so an earlier prompt cannot
