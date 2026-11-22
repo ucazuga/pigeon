@@ -45,8 +45,18 @@ See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## Self-hosting
 
-The relay is a Cloudflare Worker. Deploy [`apps/relay`](apps/relay) to your own account with `wrangler deploy`, then
-set `PIGEON_RELAY_URL` for Claude Code to point the plugin at it. Your team's questions and answers then stay on your
+The relay is a Cloudflare Worker. Create a D1 database, set its ID in
+[`apps/relay/wrangler.jsonc`](apps/relay/wrangler.jsonc), and deploy [`apps/relay`](apps/relay) to your own account:
+
+```sh
+cd apps/relay
+wrangler d1 migrations apply pigeon --remote
+wrangler deploy
+wrangler secret put PUBLIC_URL            # e.g. https://pigeon.example.com
+wrangler secret put SESSION_SIGNING_KEY   # at least 32 random characters
+```
+
+Then set `PIGEON_RELAY_URL` for Claude Code to point the plugin at it. Your team's questions and answers then stay on your
 infrastructure.
 
 ## Development
@@ -66,6 +76,7 @@ To run the relay locally:
 
 ```sh
 cd apps/relay
+cp .dev.vars.example .dev.vars
 bun run db:migrate:local
 bun run dev
 ```
