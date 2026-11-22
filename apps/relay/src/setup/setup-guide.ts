@@ -94,10 +94,7 @@ export function render_setup_guide(input: SetupGuideInput): string {
 	);
 
 	if (input.origin !== PLUGIN_DEFAULT_RELAY) {
-		lines.push(
-			`- Add \`"PIGEON_RELAY_URL": "${input.origin}"\` to the \`env\` object (create \`env\` if it is missing), so`,
-			'  the plugin talks to this relay.',
-		);
+		lines.push(`- Add \`"PIGEON_RELAY_URL": "${input.origin}"\` to the \`env\` object (create \`env\` if it is missing), so`, '  the plugin talks to this relay.');
 	}
 
 	lines.push('');

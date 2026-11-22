@@ -187,11 +187,7 @@ function to_invite(invite_row: InviteRow): Invite {
  * teammate seats are taken; the count runs inside the INSERT, so concurrent invites cannot overfill the team. The
  * owner's own seat is capped by the `invites_active_owner` index instead.
  */
-async function prepare_invite_insert(
-	team_id: string,
-	handle: string,
-	invitee: Invitee,
-): Promise<{ readonly insert: D1PreparedStatement; readonly invite_code: Redacted<string> }> {
+async function prepare_invite_insert(team_id: string, handle: string, invitee: Invitee): Promise<{ readonly insert: D1PreparedStatement; readonly invite_code: Redacted<string> }> {
 	const invite_code = create_token();
 	const now = Date.now();
 	const created_at = new Date(now).toISOString();
@@ -199,18 +195,7 @@ async function prepare_invite_insert(
 		`INSERT INTO invites (invite_code_hash, team_id, handle, invitee, status, created_at, expires_at)
 		 SELECT ?, ?, ?, ?, 'pending', ?, ?
 		 WHERE ? = 'owner' OR ${TAKEN_TEAMMATE_SEATS_SQL} < ?`,
-	).bind(
-		await hash_token(invite_code),
-		team_id,
-		handle,
-		invitee,
-		created_at,
-		new Date(now + INVITE_TTL_MS).toISOString(),
-		invitee,
-		team_id,
-		created_at,
-		TEAM_SIZE - 1,
-	);
+	).bind(await hash_token(invite_code), team_id, handle, invitee, created_at, new Date(now + INVITE_TTL_MS).toISOString(), invitee, team_id, created_at, TEAM_SIZE - 1);
 
 	return { insert, invite_code: redact(invite_code) };
 }
@@ -219,9 +204,7 @@ async function prepare_invite_insert(
 function to_overview(team_id: string, name: string, invites: ReadonlyArray<Invite>): TeamOverview {
 	const owner_invite = invites.find((invite) => invite.invitee === 'owner' && invite.status !== 'revoked') ?? null;
 	// Revoked and expired invites free their seat.
-	const teammate_seats = invites.filter(
-		(invite) => invite.invitee === 'teammate' && invite.status !== 'revoked' && invite.status !== 'expired',
-	).length;
+	const teammate_seats = invites.filter((invite) => invite.invitee === 'teammate' && invite.status !== 'revoked' && invite.status !== 'expired').length;
 	const teammates = invites.filter((invite) => invite.invitee === 'teammate' && invite.status !== 'revoked');
 	let people = teammates;
 
@@ -248,9 +231,7 @@ function to_overview(team_id: string, name: string, invites: ReadonlyArray<Invit
  */
 export async function list(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
 	const [teams, invite_rows] = await Promise.all([
-		env.DB.prepare('SELECT team_id, name FROM teams WHERE owner_id = ? ORDER BY created_at DESC')
-			.bind(owner.owner_id)
-			.all<{ readonly team_id: string; readonly name: string }>(),
+		env.DB.prepare('SELECT team_id, name FROM teams WHERE owner_id = ? ORDER BY created_at DESC').bind(owner.owner_id).all<{ readonly team_id: string; readonly name: string }>(),
 		env.DB.prepare(
 			`SELECT invites.* FROM invites JOIN teams USING (team_id)
 			 WHERE teams.owner_id = ? ORDER BY invites.created_at DESC`,
@@ -273,19 +254,13 @@ export async function list(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
  * @returns The team's overview.
  */
 export async function get(team: OwnedTeam): Promise<TeamOverview> {
-	const { results: invite_rows } = await env.DB.prepare(
-		'SELECT * FROM invites WHERE team_id = ? ORDER BY created_at DESC',
-	)
-		.bind(team.team_id)
-		.all<InviteRow>();
+	const { results: invite_rows } = await env.DB.prepare('SELECT * FROM invites WHERE team_id = ? ORDER BY created_at DESC').bind(team.team_id).all<InviteRow>();
 
 	return to_overview(team.team_id, team.name, invite_rows.map(to_invite));
 }
 
 async function count_teams(owner: Owner): Promise<number> {
-	const counted = await env.DB.prepare('SELECT COUNT(*) AS team_count FROM teams WHERE owner_id = ?')
-		.bind(owner.owner_id)
-		.first<{ readonly team_count: number }>();
+	const counted = await env.DB.prepare('SELECT COUNT(*) AS team_count FROM teams WHERE owner_id = ?').bind(owner.owner_id).first<{ readonly team_count: number }>();
 
 	// COUNT(*) always returns a row; null only satisfies the driver's type.
 	if (counted === null) {
@@ -393,11 +368,7 @@ export async function invite(team: OwnedTeam, handle: string, invitee: Invitee):
  *   full.
  */
 export async function reissue_invite(team: OwnedTeam, handle: string): Promise<ReissuedInvite> {
-	const invite_row = await env.DB.prepare(
-		"SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'",
-	)
-		.bind(team.team_id, handle)
-		.first<InviteRow>();
+	const invite_row = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'").bind(team.team_id, handle).first<InviteRow>();
 
 	if (invite_row === null) {
 		throw new PigeonError('not_found', `@${handle} has no active invite`);
@@ -440,9 +411,7 @@ export async function reissue_invite(team: OwnedTeam, handle: string): Promise<R
  * @throws {PigeonError} `not_found` for an unknown handle.
  */
 export async function revoke_member(team: OwnedTeam, handle: string): Promise<void> {
-	const invite = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'")
-		.bind(team.team_id, handle)
-		.first<InviteRow>();
+	const invite = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'").bind(team.team_id, handle).first<InviteRow>();
 
 	if (invite === null) {
 		throw new PigeonError('not_found', `@${handle} has no active invite`);
@@ -451,14 +420,8 @@ export async function revoke_member(team: OwnedTeam, handle: string): Promise<vo
 	const now = new Date().toISOString();
 
 	await env.DB.batch([
-		env.DB.prepare("UPDATE invites SET status = 'revoked', revoked_at = ? WHERE invite_code_hash = ?").bind(
-			now,
-			invite.invite_code_hash,
-		),
-		env.DB.prepare('UPDATE members SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL').bind(
-			now,
-			invite.member_id,
-		),
+		env.DB.prepare("UPDATE invites SET status = 'revoked', revoked_at = ? WHERE invite_code_hash = ?").bind(now, invite.invite_code_hash),
+		env.DB.prepare('UPDATE members SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL').bind(now, invite.member_id),
 	]);
 }
 
@@ -469,9 +432,7 @@ export async function revoke_member(team: OwnedTeam, handle: string): Promise<vo
  * @returns The team name and handle.
  * @throws {PigeonError} `not_found` when the code is unknown, used, revoked or expired.
  */
-export async function get_pending_invite(
-	code: string,
-): Promise<{ readonly team_name: string; readonly handle: string }> {
+export async function get_pending_invite(code: string): Promise<{ readonly team_name: string; readonly handle: string }> {
 	const invite = await env.DB.prepare(
 		`SELECT teams.name AS team_name, invites.handle FROM invites JOIN teams USING (team_id)
 		 WHERE invites.invite_code_hash = ? AND invites.status = 'pending' AND invites.expires_at > ?`,
@@ -497,9 +458,7 @@ export async function get_pending_invite(
  */
 export async function claim_invite(code: Redacted<string>): Promise<MemberCredentials> {
 	const code_hash = await hash_token(code.unwrap());
-	const invite = await env.DB.prepare(
-		'SELECT invites.*, teams.name AS team_name FROM invites JOIN teams USING (team_id) WHERE invite_code_hash = ?',
-	)
+	const invite = await env.DB.prepare('SELECT invites.*, teams.name AS team_name FROM invites JOIN teams USING (team_id) WHERE invite_code_hash = ?')
 		.bind(code_hash)
 		.first<InviteRow & { readonly team_name: string }>();
 
@@ -549,9 +508,5 @@ export async function claim_invite(code: Redacted<string>): Promise<MemberCreden
  * @param member_id - The authenticated member.
  */
 export async function mark_connected(member_id: string): Promise<void> {
-	await env.DB.prepare(
-		"UPDATE invites SET status = 'connected', connected_at = ? WHERE member_id = ? AND status = 'claimed'",
-	)
-		.bind(new Date().toISOString(), member_id)
-		.run();
+	await env.DB.prepare("UPDATE invites SET status = 'connected', connected_at = ? WHERE member_id = ? AND status = 'claimed'").bind(new Date().toISOString(), member_id).run();
 }

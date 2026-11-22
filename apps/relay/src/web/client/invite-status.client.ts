@@ -28,10 +28,7 @@ async function fetch_statuses(url: string): Promise<ReadonlyArray<InviteStatus> 
  * @param url - The team's invite status endpoint.
  * @param on_statuses - Called with every response; returns whether to keep polling.
  */
-export function poll_invite_statuses(
-	url: string,
-	on_statuses: (statuses: ReadonlyArray<InviteStatus>) => boolean,
-): void {
+export function poll_invite_statuses(url: string, on_statuses: (statuses: ReadonlyArray<InviteStatus>) => boolean): void {
 	async function poll_round() {
 		let keep_polling = true;
 

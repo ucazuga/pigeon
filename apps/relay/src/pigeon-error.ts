@@ -1,12 +1,5 @@
 /** What kind of failure happened. The HTTP boundary maps each code to one status. */
-export type ErrorCode =
-	| 'invalid_input'
-	| 'unauthorized'
-	| 'forbidden'
-	| 'not_found'
-	| 'conflict'
-	| 'rate_limited'
-	| 'unavailable';
+export type ErrorCode = 'invalid_input' | 'unauthorized' | 'forbidden' | 'not_found' | 'conflict' | 'rate_limited' | 'unavailable';
 
 /**
  * The single error type for expected failures. The message must be safe to show to the caller:

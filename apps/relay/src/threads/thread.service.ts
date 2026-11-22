@@ -85,9 +85,7 @@ export type ThreadView = {
 };
 
 /** Result of waiting for an answer. */
-export type WaitResult =
-	| { readonly status: 'still_waiting'; readonly thread_id: string; readonly message: string }
-	| { readonly status: 'replied'; readonly thread: ThreadView };
+export type WaitResult = { readonly status: 'still_waiting'; readonly thread_id: string; readonly message: string } | { readonly status: 'replied'; readonly thread: ThreadView };
 
 /** Load a thread the member takes part in. Threads of other members look the same as missing ones. */
 async function get_thread_row(member: Member, thread_id: string): Promise<ThreadRow> {
@@ -176,9 +174,7 @@ async function notify_member(team_id: string, member_id: string, event: RelayEve
 
 async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView> {
 	const [teammates, messages] = await Promise.all([
-		env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?')
-			.bind(member.team_id)
-			.all<{ readonly member_id: string; readonly handle: string }>(),
+		env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?').bind(member.team_id).all<{ readonly member_id: string; readonly handle: string }>(),
 		env.DB.prepare(
 			`SELECT message_id, sender, kind, body, in_reply_to, sent_at FROM messages
 			 WHERE thread_id = ? ORDER BY sent_at, rowid`,
@@ -217,9 +213,7 @@ async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView
  * @returns Handles, alphabetically, excluding the member's own.
  */
 export async function list_teammates(member: Member): Promise<ReadonlyArray<string>> {
-	const { results: teammates } = await env.DB.prepare(
-		'SELECT handle FROM members WHERE team_id = ? AND member_id != ? AND revoked_at IS NULL ORDER BY handle',
-	)
+	const { results: teammates } = await env.DB.prepare('SELECT handle FROM members WHERE team_id = ? AND member_id != ? AND revoked_at IS NULL ORDER BY handle')
 		.bind(member.team_id, member.member_id)
 		.all<{ readonly handle: string }>();
 
@@ -235,14 +229,8 @@ export async function list_teammates(member: Member): Promise<ReadonlyArray<stri
  * @returns The new thread's and question's IDs.
  * @throws {PigeonError} `not_found` when no active teammate has that handle; `invalid_input` for asking yourself.
  */
-export async function ask(
-	member: Member,
-	to: string,
-	question: string,
-): Promise<{ readonly thread_id: string; readonly question_id: string }> {
-	const answerer = await env.DB.prepare(
-		'SELECT member_id FROM members WHERE team_id = ? AND handle = ? AND revoked_at IS NULL',
-	)
+export async function ask(member: Member, to: string, question: string): Promise<{ readonly thread_id: string; readonly question_id: string }> {
+	const answerer = await env.DB.prepare('SELECT member_id FROM members WHERE team_id = ? AND handle = ? AND revoked_at IS NULL')
 		.bind(member.team_id, to)
 		.first<{ readonly member_id: string }>();
 
@@ -289,11 +277,7 @@ export async function ask(
  * @returns The new question's ID.
  * @throws {PigeonError} `not_found`, `forbidden` or `conflict` per the turn-taking rules.
  */
-export async function follow_up(
-	member: Member,
-	thread_id: string,
-	question: string,
-): Promise<{ readonly question_id: string }> {
+export async function follow_up(member: Member, thread_id: string, question: string): Promise<{ readonly question_id: string }> {
 	const thread = await get_thread_row(member, thread_id);
 
 	if (thread.asker !== member.member_id) {
@@ -307,13 +291,7 @@ export async function follow_up(
 	const question_id = crypto.randomUUID();
 	const next_state = { status: 'awaiting_answer', current_message: question_id } as const;
 
-	await save_message(
-		thread,
-		next_state,
-		{ message_id: question_id, sender: member.member_id, kind: 'question' },
-		question,
-		null,
-	);
+	await save_message(thread, next_state, { message_id: question_id, sender: member.member_id, kind: 'question' }, question, null);
 	await notify_member(member.team_id, thread.answerer, {
 		type: 'question_received',
 		thread_id,
@@ -334,12 +312,7 @@ export async function follow_up(
  * @param answer_text - The approved answer.
  * @throws {PigeonError} `not_found`, `forbidden` or `conflict` per the turn-taking rules.
  */
-export async function answer(
-	member: Member,
-	thread_id: string,
-	question_id: string,
-	answer_text: string,
-): Promise<void> {
+export async function answer(member: Member, thread_id: string, question_id: string, answer_text: string): Promise<void> {
 	const thread = await get_thread_row(member, thread_id);
 
 	assert_reply_to_open_question(thread, member, question_id);
@@ -347,13 +320,7 @@ export async function answer(
 	const answer_id = crypto.randomUUID();
 	const next_state = { status: 'answered', current_message: answer_id } as const;
 
-	await save_message(
-		thread,
-		next_state,
-		{ message_id: answer_id, sender: member.member_id, kind: 'answer' },
-		answer_text,
-		question_id,
-	);
+	await save_message(thread, next_state, { message_id: answer_id, sender: member.member_id, kind: 'answer' }, answer_text, question_id);
 	await notify_member(member.team_id, thread.asker, {
 		type: 'answer_received',
 		thread_id,
@@ -380,13 +347,7 @@ export async function decline(member: Member, thread_id: string, question_id: st
 	const decline_id = crypto.randomUUID();
 	const next_state = { status: 'declined', current_message: question_id } as const;
 
-	await save_message(
-		thread,
-		next_state,
-		{ message_id: decline_id, sender: member.member_id, kind: 'decline' },
-		null,
-		question_id,
-	);
+	await save_message(thread, next_state, { message_id: decline_id, sender: member.member_id, kind: 'decline' }, null, question_id);
 	await notify_member(member.team_id, thread.asker, {
 		type: 'question_declined',
 		thread_id,
@@ -421,9 +382,7 @@ export async function list_inbox(member: Member): Promise<ReadonlyArray<ThreadVi
  * @returns The number of threads awaiting their answer.
  */
 export async function count_unanswered(member: Member): Promise<number> {
-	const counted = await env.DB.prepare(
-		"SELECT COUNT(*) AS unanswered FROM threads WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer'",
-	)
+	const counted = await env.DB.prepare("SELECT COUNT(*) AS unanswered FROM threads WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer'")
 		.bind(member.team_id, member.member_id)
 		.first<{ readonly unanswered: number }>();
 
@@ -460,9 +419,7 @@ export async function get_open_question(member: Member, thread_id: string): Prom
 
 	assert_answerers_turn(thread, member);
 
-	const question = await env.DB.prepare('SELECT body FROM messages WHERE message_id = ?')
-		.bind(thread.current_message)
-		.first<{ readonly body: string | null }>();
+	const question = await env.DB.prepare('SELECT body FROM messages WHERE message_id = ?').bind(thread.current_message).first<{ readonly body: string | null }>();
 
 	if (question === null || question.body === null) {
 		throw new PigeonError('not_found', 'The open question has no text');

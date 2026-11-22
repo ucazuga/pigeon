@@ -9,8 +9,7 @@ import { join } from 'node:path';
  */
 
 const BIN = join(import.meta.dir, '..', 'plugins', 'pigeon', 'bin');
-const CREDENTIALS =
-	'{"relay_url":"https://relay.test","team_name":"Core","handle":"ahmet","member_token":"tok_secret_value"}';
+const CREDENTIALS = '{"relay_url":"https://relay.test","team_name":"Core","handle":"ahmet","member_token":"tok_secret_value"}';
 const SESSION_ID = '0b5f2a3e-1c4d-4e8f-9a0b-1c2d3e4f5a6b';
 
 let sandbox = '';
@@ -65,10 +64,7 @@ describe('pigeon-draft', () => {
 	beforeEach(async () => {
 		await write_credentials();
 		await install_fake('curl', `cat > /dev/null; printf '%s' '${question}'`);
-		await install_fake(
-			'claude',
-			`printf '%s\\n' "$@" > "${sandbox}/argv"; cat > "${sandbox}/stdin"; printf '{"result":"draft","session_id":"${SESSION_ID}"}'`,
-		);
+		await install_fake('claude', `printf '%s\\n' "$@" > "${sandbox}/argv"; cat > "${sandbox}/stdin"; printf '{"result":"draft","session_id":"${SESSION_ID}"}'`);
 	});
 
 	test('fetches the question itself and passes it on stdin, never in argv', async () => {
@@ -86,11 +82,7 @@ describe('pigeon-draft', () => {
 		const argv = await recorded_argv();
 
 		expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('dontAsk');
-		expect(argv.slice(argv.indexOf('--tools') + 1, argv.indexOf('--disallowedTools'))).toEqual([
-			'Read',
-			'Grep',
-			'Glob',
-		]);
+		expect(argv.slice(argv.indexOf('--tools') + 1, argv.indexOf('--disallowedTools'))).toEqual(['Read', 'Grep', 'Glob']);
 		expect(argv).not.toContain('--allowedTools');
 		expect(argv).toContain('Read(~/.aws/**)');
 		expect(argv).toContain('--strict-mcp-config');
@@ -146,10 +138,7 @@ describe('pigeon-join', () => {
 	});
 
 	test('keeps existing credentials when the relay returns something else', async () => {
-		await install_fake(
-			'curl',
-			`cat > /dev/null; while [ "$#" -gt 0 ]; do if [ "$1" = "-o" ]; then echo '<html>' > "$2"; fi; shift; done`,
-		);
+		await install_fake('curl', `cat > /dev/null; while [ "$#" -gt 0 ]; do if [ "$1" = "-o" ]; then echo '<html>' > "$2"; fi; shift; done`);
 
 		const result = await run('pigeon-join', ['invite_abc', 'https://relay.test']);
 
