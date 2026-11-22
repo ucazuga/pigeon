@@ -1,5 +1,5 @@
 import { DurableObject, env } from 'cloudflare:workers';
-import type { Member } from '../members/member.schema';
+import type { Member } from '../teams/team.schema';
 import type { RelayEvent } from './thread.schema';
 
 const HEARTBEAT_MS = 25_000;
@@ -62,14 +62,14 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 	 */
 	async notify(member_id: string, event: RelayEvent): Promise<void> {
 		const now = Date.now();
-		const data = JSON.stringify(event);
-		const row = this.ctx.storage.sql
+		const event_json = JSON.stringify(event);
+		const stored_event = this.ctx.storage.sql
 			.exec<{ id: number }>(
 				'INSERT INTO events (member_id, thread_id, type, data, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id',
 				member_id,
 				event.thread_id,
 				event.type,
-				data,
+				event_json,
 				now,
 			)
 			.one();
@@ -77,7 +77,7 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 		this.ctx.storage.sql.exec('DELETE FROM events WHERE created_at < ?', now - EVENT_RETENTION_MS);
 
 		for (const writer of this.streams.get(member_id) ?? []) {
-			this.send(member_id, writer, `id: ${row.id}\ndata: ${data}\n\n`);
+			this.send(member_id, writer, `id: ${stored_event.id}\ndata: ${event_json}\n\n`);
 		}
 
 		if (event.type === 'question_received') {
@@ -130,7 +130,7 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 	 * @param timeout_ms - How long to wait at most.
 	 */
 	async wait_for_reply(member_id: string, thread_id: string, since: number, timeout_ms: number): Promise<void> {
-		const already = this.ctx.storage.sql
+		const replies_since = this.ctx.storage.sql
 			.exec<{ id: number }>(
 				`SELECT id FROM events WHERE member_id = ? AND thread_id = ? AND created_at >= ?
 				 AND type IN ('answer_received', 'question_declined') LIMIT 1`,
@@ -140,7 +140,7 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 			)
 			.toArray();
 
-		if (already.length > 0) {
+		if (replies_since.length > 0) {
 			return;
 		}
 
@@ -175,13 +175,13 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 			return;
 		}
 
-		const missed = this.ctx.storage.sql.exec<{ id: number; data: string }>(
+		const missed_events = this.ctx.storage.sql.exec<{ id: number; data: string }>(
 			'SELECT id, data FROM events WHERE member_id = ? AND id > ? ORDER BY id',
 			member_id,
 			last_event_id,
 		);
 
-		for (const event of missed) {
+		for (const event of missed_events) {
 			this.send(member_id, writer, `id: ${event.id}\ndata: ${event.data}\n\n`);
 		}
 	}

@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { csrf } from 'hono/csrf';
-import { auth_routes } from './api/auth.handler';
-import { dashboard_routes } from './api/dashboard.handler';
-import { mcp_routes } from './api/mcp.handler';
-import { setup_routes } from './api/setup.handler';
-import { thread_routes } from './api/thread.handler';
+import { auth_routes } from './auth/auth.handler';
 import { handle_error } from './infrastructure/http/error.handler';
+import { mcp_routes } from './mcp/mcp.handler';
+import { setup_routes } from './setup/setup.handler';
+import { dashboard_routes } from './teams/dashboard.handler';
+import { thread_routes } from './threads/thread.handler';
 
 /** The relay's HTTP app: error handling plus every route. */
 export const app = new Hono()

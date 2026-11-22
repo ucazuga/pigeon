@@ -25,5 +25,6 @@ reintroduce those patterns without revisiting this ADR.
 
 ## What we keep
 
-Turn-taking rules (`threads/thread.ts`) and invite states (`teams/invite.ts`) stay as unions discriminated by a plain `status` field, with pure
-functions: they are the product's core logic and are unit-tested. `redact()` stays so tokens never reach logs.
+State rules live in the service that writes the state: turn-taking checks in `threads/thread.service.ts`, invite
+claims in `teams/team.service.ts`. Conditional SQL updates (`WHERE status = ...`) are what actually enforce them, so a
+separate pure state module would only repeat the SQL. `redact()` stays so tokens never reach logs.

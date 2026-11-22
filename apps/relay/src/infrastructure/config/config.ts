@@ -42,7 +42,9 @@ export function read_config(): RelayConfig {
 		throw new Error('EMAIL_FROM must be an email address');
 	}
 
-	if (typeof env.SESSION_SIGNING_KEY !== 'string' || env.SESSION_SIGNING_KEY.length < MIN_SIGNING_KEY_LENGTH) {
+	const session_signing_key = env.SESSION_SIGNING_KEY ?? '';
+
+	if (session_signing_key.length < MIN_SIGNING_KEY_LENGTH) {
 		throw new Error(`SESSION_SIGNING_KEY must be at least ${MIN_SIGNING_KEY_LENGTH} characters`);
 	}
 
@@ -50,6 +52,6 @@ export function read_config(): RelayConfig {
 		public_url,
 		email_from,
 		log_magic_links: is_local && env.MAGIC_LINK_DELIVERY === 'console',
-		session_signing_key: redact(env.SESSION_SIGNING_KEY),
+		session_signing_key: redact(session_signing_key),
 	};
 }

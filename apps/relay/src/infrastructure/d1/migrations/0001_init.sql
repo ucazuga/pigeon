@@ -21,7 +21,7 @@ CREATE TABLE teams (
 	created_at TEXT NOT NULL
 );
 
--- One row per invite; `status` mirrors Invite['status'] in teams/invite.ts.
+-- One row per invite; `status` mirrors Invite['status'] in teams/team.service.ts.
 -- Claiming must be a conditional update (`... WHERE invite_code_hash = ? AND status = 'pending'`) so two
 -- concurrent joins cannot both succeed.
 CREATE TABLE invites (

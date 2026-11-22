@@ -1,21 +1,32 @@
 import { env } from 'cloudflare:workers';
-import type { Member } from '../members/member.schema';
 import { PigeonError } from '../pigeon-error';
-import { team_room_of } from './team-room';
-import * as Thread from './thread';
+import type { Member } from '../teams/team.schema';
+import { team_room_of } from './team-room.durable-object';
 import type { RelayEvent } from './thread.schema';
 
 /*
- * Asking, answering and reading threads, stored in D1. `thread.ts` decides whether a move is allowed; this module
- * loads the thread, applies the move and writes it with a conditional UPDATE on the state it read, so a concurrent
- * reply that got there first makes this one fail with `conflict` instead of overwriting it.
+ * Asking, answering and reading threads, stored in D1.
+ *
+ * A thread alternates strictly: the asker asks, the answerer answers or declines, the asker may follow up. Only one
+ * question is open at a time, so the answering side always has exactly one draft to review. Each move checks who may
+ * make it, then writes with a conditional UPDATE on the state it read, so a concurrent reply that got there first
+ * makes this one fail with `conflict` instead of overwriting it.
  */
+
+/** Where a thread's conversation stands. */
+type ThreadStatus = 'awaiting_answer' | 'answered' | 'declined';
 
 type ThreadRow = {
 	readonly thread_id: string;
+
+	/** Member ID (not handle) of the person who asked. */
 	readonly asker: string;
+
+	/** Member ID (not handle) of the person asked. */
 	readonly answerer: string;
-	readonly status: Thread.Thread['status'];
+	readonly status: ThreadStatus;
+
+	/** The open question while awaiting an answer, the last answer once answered, the declined question once declined. */
 	readonly current_message: string;
 };
 
@@ -58,7 +69,7 @@ export type ThreadView = {
 	readonly answerer: string;
 
 	/** Where the conversation stands. */
-	readonly status: Thread.Thread['status'];
+	readonly status: ThreadStatus;
 
 	/** The open question's ID while `status` is `awaiting_answer`, otherwise null. */
 	readonly open_question: string | null;
@@ -67,46 +78,48 @@ export type ThreadView = {
 	readonly messages: ReadonlyArray<ThreadMessage>;
 };
 
-function to_thread(row: ThreadRow): Thread.Thread {
-	const base = { thread_id: row.thread_id, asker: row.asker, answerer: row.answerer };
-
-	if (row.status === 'awaiting_answer') {
-		return { ...base, status: 'awaiting_answer', open_question: row.current_message };
-	}
-
-	if (row.status === 'answered') {
-		return { ...base, status: 'answered', last_answer: row.current_message };
-	}
-
-	return { ...base, status: 'declined', declined_question: row.current_message };
-}
-
-function current_message_of(thread: Thread.Thread): string {
-	if (thread.status === 'awaiting_answer') {
-		return thread.open_question;
-	}
-
-	if (thread.status === 'answered') {
-		return thread.last_answer;
-	}
-
-	return thread.declined_question;
-}
-
 /** Load a thread the member takes part in. Threads of other members look the same as missing ones. */
 async function load_thread(member: Member, thread_id: string): Promise<ThreadRow> {
-	const row = await env.DB.prepare(
+	const thread = await env.DB.prepare(
 		`SELECT thread_id, asker, answerer, status, current_message FROM threads
 		 WHERE thread_id = ? AND team_id = ? AND (asker = ? OR answerer = ?)`,
 	)
 		.bind(thread_id, member.team_id, member.member_id, member.member_id)
 		.first<ThreadRow>();
 
-	if (row === null) {
+	if (thread === null) {
 		throw new PigeonError('not_found', 'No such thread');
 	}
 
-	return row;
+	return thread;
+}
+
+/**
+ * Check that it is the member's turn to reply: they were asked and the question is still open.
+ *
+ * @throws {PigeonError} `forbidden` when the member was not asked; `conflict` when no question is open.
+ */
+function assert_answerers_turn(thread: ThreadRow, member: Member): void {
+	if (thread.answerer !== member.member_id) {
+		throw new PigeonError('forbidden', 'Only the person asked can reply');
+	}
+
+	if (thread.status !== 'awaiting_answer') {
+		throw new PigeonError('conflict', 'There is no open question in this thread');
+	}
+}
+
+/**
+ * Check that a reply is for the question that is open now, not an earlier one.
+ *
+ * @throws {PigeonError} `forbidden` or `conflict` as {@link assert_answerers_turn}; `conflict` for another question.
+ */
+function assert_replying_to_open(thread: ThreadRow, member: Member, question_id: string): void {
+	assert_answerers_turn(thread, member);
+
+	if (thread.current_message !== question_id) {
+		throw new PigeonError('conflict', 'This reply is for a question that is no longer open');
+	}
 }
 
 /**
@@ -114,26 +127,26 @@ async function load_thread(member: Member, thread_id: string): Promise<ThreadRow
  * that was read; the INSERT only applies if the UPDATE did.
  */
 async function save_move(
-	before: ThreadRow,
-	after: Thread.Thread,
+	thread: ThreadRow,
+	next_state: { readonly status: ThreadStatus; readonly current_message: string },
 	message: { readonly message_id: string; readonly sender: string; readonly kind: MessageRow['kind'] },
 	body: string | null,
 	in_reply_to: string | null,
 ): Promise<void> {
 	const now = new Date().toISOString();
-	const results = await env.DB.batch([
+	const batch_results = await env.DB.batch([
 		env.DB.prepare(
 			`UPDATE threads SET status = ?, current_message = ?, updated_at = ?
 			 WHERE thread_id = ? AND status = ? AND current_message = ?`,
-		).bind(after.status, current_message_of(after), now, before.thread_id, before.status, before.current_message),
+		).bind(next_state.status, next_state.current_message, now, thread.thread_id, thread.status, thread.current_message),
 		env.DB.prepare(
 			`INSERT INTO messages (message_id, thread_id, sender, kind, body, in_reply_to, sent_at)
 			 SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`,
-		).bind(message.message_id, before.thread_id, message.sender, message.kind, body, in_reply_to, now),
+		).bind(message.message_id, thread.thread_id, message.sender, message.kind, body, in_reply_to, now),
 	]);
-	const update = results[0] ?? null;
+	const thread_update = batch_results[0] ?? null;
 
-	if (update === null || update.meta.changes !== 1) {
+	if (thread_update === null || thread_update.meta.changes !== 1) {
 		throw new PigeonError('conflict', 'The thread changed meanwhile; read it again');
 	}
 }
@@ -151,39 +164,39 @@ async function notify(team_id: string, member_id: string, event: RelayEvent): Pr
 }
 
 async function handles_of(team_id: string): Promise<ReadonlyMap<string, string>> {
-	const { results } = await env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?')
+	const { results: members } = await env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?')
 		.bind(team_id)
 		.all<{ readonly member_id: string; readonly handle: string }>();
 
-	return new Map(results.map((row) => [row.member_id, row.handle]));
+	return new Map(members.map((teammate) => [teammate.member_id, teammate.handle]));
 }
 
-async function view_of(member: Member, row: ThreadRow): Promise<ThreadView> {
+async function view_of(member: Member, thread: ThreadRow): Promise<ThreadView> {
 	const [handles, messages] = await Promise.all([
 		handles_of(member.team_id),
 		env.DB.prepare(
 			`SELECT message_id, sender, kind, body, in_reply_to, sent_at FROM messages
 			 WHERE thread_id = ? ORDER BY sent_at, rowid`,
 		)
-			.bind(row.thread_id)
+			.bind(thread.thread_id)
 			.all<MessageRow>(),
 	]);
-	const handle = (member_id: string) => handles.get(member_id) ?? 'unknown';
+	const handle_of = (member_id: string) => handles.get(member_id) ?? 'unknown';
 	let open_question: string | null = null;
 
-	if (row.status === 'awaiting_answer') {
-		open_question = row.current_message;
+	if (thread.status === 'awaiting_answer') {
+		open_question = thread.current_message;
 	}
 
 	return {
-		thread_id: row.thread_id,
-		asker: handle(row.asker),
-		answerer: handle(row.answerer),
-		status: row.status,
+		thread_id: thread.thread_id,
+		asker: handle_of(thread.asker),
+		answerer: handle_of(thread.answerer),
+		status: thread.status,
 		open_question,
 		messages: messages.results.map((message) => ({
 			message_id: message.message_id,
-			from: handle(message.sender),
+			from: handle_of(message.sender),
 			kind: message.kind,
 			body: message.body,
 			sent_at: message.sent_at,
@@ -198,13 +211,13 @@ async function view_of(member: Member, row: ThreadRow): Promise<ThreadView> {
  * @returns Handles, alphabetically, excluding the member's own.
  */
 export async function list_teammates(member: Member): Promise<ReadonlyArray<string>> {
-	const { results } = await env.DB.prepare(
+	const { results: teammates } = await env.DB.prepare(
 		'SELECT handle FROM members WHERE team_id = ? AND member_id != ? AND revoked_at IS NULL ORDER BY handle',
 	)
 		.bind(member.team_id, member.member_id)
 		.all<{ readonly handle: string }>();
 
-	return results.map((row) => row.handle);
+	return teammates.map((teammate) => teammate.handle);
 }
 
 /**
@@ -275,12 +288,27 @@ export async function follow_up(
 	thread_id: string,
 	question: string,
 ): Promise<{ readonly question_id: string }> {
-	const row = await load_thread(member, thread_id);
-	const question_id = crypto.randomUUID();
-	const after = Thread.follow_up(to_thread(row), member.member_id, question_id);
+	const thread = await load_thread(member, thread_id);
 
-	await save_move(row, after, { message_id: question_id, sender: member.member_id, kind: 'question' }, question, null);
-	await notify(member.team_id, row.answerer, {
+	if (thread.asker !== member.member_id) {
+		throw new PigeonError('forbidden', 'Only the asker can follow up');
+	}
+
+	if (thread.status === 'awaiting_answer') {
+		throw new PigeonError('conflict', 'The previous question has not been answered yet');
+	}
+
+	const question_id = crypto.randomUUID();
+	const next_state = { status: 'awaiting_answer', current_message: question_id } as const;
+
+	await save_move(
+		thread,
+		next_state,
+		{ message_id: question_id, sender: member.member_id, kind: 'question' },
+		question,
+		null,
+	);
+	await notify(member.team_id, thread.answerer, {
 		type: 'question_received',
 		thread_id,
 		message_id: question_id,
@@ -306,18 +334,21 @@ export async function answer(
 	question_id: string,
 	answer_text: string,
 ): Promise<void> {
-	const row = await load_thread(member, thread_id);
+	const thread = await load_thread(member, thread_id);
+
+	assert_replying_to_open(thread, member, question_id);
+
 	const answer_id = crypto.randomUUID();
-	const after = Thread.answer(to_thread(row), member.member_id, question_id, answer_id);
+	const next_state = { status: 'answered', current_message: answer_id } as const;
 
 	await save_move(
-		row,
-		after,
+		thread,
+		next_state,
 		{ message_id: answer_id, sender: member.member_id, kind: 'answer' },
 		answer_text,
 		question_id,
 	);
-	await notify(member.team_id, row.asker, {
+	await notify(member.team_id, thread.asker, {
 		type: 'answer_received',
 		thread_id,
 		message_id: answer_id,
@@ -336,12 +367,21 @@ export async function answer(
  * @throws {PigeonError} `not_found`, `forbidden` or `conflict` per the turn-taking rules.
  */
 export async function decline(member: Member, thread_id: string, question_id: string): Promise<void> {
-	const row = await load_thread(member, thread_id);
-	const decline_id = crypto.randomUUID();
-	const after = Thread.decline(to_thread(row), member.member_id, question_id);
+	const thread = await load_thread(member, thread_id);
 
-	await save_move(row, after, { message_id: decline_id, sender: member.member_id, kind: 'decline' }, null, question_id);
-	await notify(member.team_id, row.asker, {
+	assert_replying_to_open(thread, member, question_id);
+
+	const decline_id = crypto.randomUUID();
+	const next_state = { status: 'declined', current_message: question_id } as const;
+
+	await save_move(
+		thread,
+		next_state,
+		{ message_id: decline_id, sender: member.member_id, kind: 'decline' },
+		null,
+		question_id,
+	);
+	await notify(member.team_id, thread.asker, {
 		type: 'question_declined',
 		thread_id,
 		message_id: decline_id,
@@ -358,14 +398,14 @@ export async function decline(member: Member, thread_id: string, question_id: st
  * @returns Open threads, oldest first.
  */
 export async function inbox(member: Member): Promise<ReadonlyArray<ThreadView>> {
-	const { results } = await env.DB.prepare(
+	const { results: open_threads } = await env.DB.prepare(
 		`SELECT thread_id, asker, answerer, status, current_message FROM threads
 		 WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer' ORDER BY updated_at`,
 	)
 		.bind(member.team_id, member.member_id)
 		.all<ThreadRow>();
 
-	return Promise.all(results.map((row) => view_of(member, row)));
+	return Promise.all(open_threads.map((thread) => view_of(member, thread)));
 }
 
 /**
@@ -389,25 +429,19 @@ export async function get_thread(member: Member, thread_id: string): Promise<Thr
  * @throws {PigeonError} `not_found`; `forbidden` unless the member was asked; `conflict` when nothing is open.
  */
 export async function open_question(member: Member, thread_id: string): Promise<string> {
-	const row = await load_thread(member, thread_id);
+	const thread = await load_thread(member, thread_id);
 
-	if (row.answerer !== member.member_id) {
-		throw new PigeonError('forbidden', 'Only the person asked can read the open question');
-	}
+	assert_answerers_turn(thread, member);
 
-	if (row.status !== 'awaiting_answer') {
-		throw new PigeonError('conflict', 'There is no open question in this thread');
-	}
-
-	const message = await env.DB.prepare('SELECT body FROM messages WHERE message_id = ?')
-		.bind(row.current_message)
+	const question = await env.DB.prepare('SELECT body FROM messages WHERE message_id = ?')
+		.bind(thread.current_message)
 		.first<{ readonly body: string | null }>();
 
-	if (message === null || message.body === null) {
+	if (question === null || question.body === null) {
 		throw new PigeonError('not_found', 'The open question has no text');
 	}
 
-	return message.body;
+	return question.body;
 }
 
 /** How long one `wait_for_answer` call waits before asking the caller to call again (under MCP's 5 min idle limit). */
@@ -427,20 +461,20 @@ export type WaitResult =
  * @throws {PigeonError} `not_found` for an unknown thread; `forbidden` unless the member asked.
  */
 export async function wait_for_answer(member: Member, thread_id: string): Promise<WaitResult> {
-	const since = Date.now();
-	const row = await load_thread(member, thread_id);
+	const waiting_since = Date.now();
+	const thread = await load_thread(member, thread_id);
 
-	if (row.asker !== member.member_id) {
+	if (thread.asker !== member.member_id) {
 		throw new PigeonError('forbidden', 'Only the person who asked can wait for the answer');
 	}
 
-	if (row.status === 'awaiting_answer') {
-		await team_room_of(member.team_id).wait_for_reply(member.member_id, thread_id, since, WAIT_MS);
+	if (thread.status === 'awaiting_answer') {
+		await team_room_of(member.team_id).wait_for_reply(member.member_id, thread_id, waiting_since, WAIT_MS);
 	}
 
-	const latest = await load_thread(member, thread_id);
+	const thread_after_wait = await load_thread(member, thread_id);
 
-	if (latest.status === 'awaiting_answer') {
+	if (thread_after_wait.status === 'awaiting_answer') {
 		return {
 			status: 'still_waiting',
 			thread_id,
@@ -448,5 +482,5 @@ export async function wait_for_answer(member: Member, thread_id: string): Promis
 		};
 	}
 
-	return { status: 'replied', thread: await view_of(member, latest) };
+	return { status: 'replied', thread: await view_of(member, thread_after_wait) };
 }

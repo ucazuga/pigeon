@@ -1,6 +1,5 @@
-import type { OwnerSession } from '../accounts/owner-login.service';
-import type { Invite } from '../teams/invite';
-import type { TeamOverview } from '../teams/team.service';
+import type { Owner } from '../auth/owner.service';
+import type { Invite, TeamOverview } from '../teams/team.service';
 import { Layout } from './layout';
 
 type InviteState = Invite['status'] | 'expired';
@@ -21,7 +20,7 @@ function state_of(invite: Invite): InviteState {
 	return invite.status;
 }
 
-function Header(props: { readonly owner: OwnerSession }) {
+function Header(props: { readonly owner: Owner }) {
 	return (
 		<div class="top">
 			<img src="/pigeon-mark.svg" alt="" />
@@ -86,7 +85,7 @@ function TeamCard(props: { readonly team: TeamOverview }) {
  * @returns The page.
  */
 export function DashboardPage(props: {
-	readonly owner: OwnerSession;
+	readonly owner: Owner;
 	readonly teams: ReadonlyArray<TeamOverview>;
 	readonly error: string | null;
 }) {
@@ -142,7 +141,7 @@ poll();
  * @returns The page.
  */
 export function InviteCreatedPage(props: {
-	readonly owner: OwnerSession;
+	readonly owner: Owner;
 	readonly team_id: string;
 	readonly team_name: string;
 	readonly handle: string;

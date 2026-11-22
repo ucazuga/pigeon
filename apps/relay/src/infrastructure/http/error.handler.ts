@@ -44,7 +44,7 @@ export function handle_error(error: Error, context: Context): Response {
 		return error.getResponse();
 	}
 
-	if (error instanceof zod.ZodError) {
+	if (error instanceof zod.core.$ZodError) {
 		return context.json({ error: 'invalid_input', message: zod.prettifyError(error) }, 400);
 	}
 
