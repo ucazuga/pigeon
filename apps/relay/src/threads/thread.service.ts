@@ -13,6 +13,12 @@ import type { RelayEvent } from './thread.schema';
  * makes this one fail with `conflict` instead of overwriting it.
  */
 
+/**
+ * How long one `wait_for_answer` call holds the connection. Kept under Claude Code's MCP request timeout: a longer
+ * wait fails as "operation timed out" on the client instead of returning `still_waiting`.
+ */
+const WAIT_MS = 45 * 1000;
+
 /** Where a thread's conversation stands. */
 type ThreadStatus = 'awaiting_answer' | 'answered' | 'declined';
 
@@ -77,6 +83,11 @@ export type ThreadView = {
 	/** Every message, oldest first. */
 	readonly messages: ReadonlyArray<ThreadMessage>;
 };
+
+/** Result of waiting for an answer. */
+export type WaitResult =
+	| { readonly status: 'still_waiting'; readonly thread_id: string; readonly message: string }
+	| { readonly status: 'replied'; readonly thread: ThreadView };
 
 /** Load a thread the member takes part in. Threads of other members look the same as missing ones. */
 async function get_thread_row(member: Member, thread_id: string): Promise<ThreadRow> {
@@ -459,17 +470,6 @@ export async function get_open_question(member: Member, thread_id: string): Prom
 
 	return question.body;
 }
-
-/**
- * How long one `wait_for_answer` call holds the connection. Kept under Claude Code's MCP request timeout: a longer
- * wait fails as "operation timed out" on the client instead of returning `still_waiting`.
- */
-const WAIT_MS = 45 * 1000;
-
-/** Result of waiting for an answer. */
-export type WaitResult =
-	| { readonly status: 'still_waiting'; readonly thread_id: string; readonly message: string }
-	| { readonly status: 'replied'; readonly thread: ThreadView };
 
 /**
  * Wait for the answer to the asker's open question, for up to 45 seconds.
