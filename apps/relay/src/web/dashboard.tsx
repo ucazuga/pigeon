@@ -48,10 +48,15 @@ function TeamCard(props: { readonly team: TeamOverview }) {
 		<section class="card">
 			<h2>{props.team.name}</h2>
 			{props.team.owner_invite === null && <JoinYourself team_id={props.team.team_id} />}
-			<form method="post" action={`/dashboard/teams/${props.team.team_id}/invites`} class="inline">
-				<input type="text" name="handle" placeholder="teammate handle, e.g. ahmet" required />
-				<button type="submit">Invite</button>
-			</form>
+			{props.team.can_invite_teammate && (
+				<form method="post" action={`/dashboard/teams/${props.team.team_id}/invites`} class="inline">
+					<input type="text" name="handle" placeholder="teammate handle, e.g. ahmet" required />
+					<button type="submit">Invite</button>
+				</form>
+			)}
+			{props.team.can_invite_teammate === false && (
+				<p class="muted">This team is full: up to 3 people, you included. Remove someone to invite another teammate.</p>
+			)}
 			{invites.length === 0 && <p class="muted">No teammates yet. Invite someone by the handle they will use.</p>}
 			{invites.length > 0 && (
 				<table>
@@ -86,15 +91,30 @@ function TeamCard(props: { readonly team: TeamOverview }) {
 	);
 }
 
+function CreateTeam() {
+	return (
+		<section class="card">
+			<h2>Create a team</h2>
+			<p class="muted">You join it too: next you get a prompt to set Pigeon up in your own Claude Code.</p>
+			<form method="post" action="/dashboard/teams" class="inline">
+				<input type="text" name="name" placeholder="Team name" required maxlength={60} />
+				<input type="text" name="handle" placeholder="Your handle, e.g. avni" required />
+				<button type="submit">Create</button>
+			</form>
+		</section>
+	);
+}
+
 /**
- * The owner's dashboard: their teams, invites and a form to create a team.
+ * The owner's dashboard: their teams, invites and, while they may create one, a form to create a team.
  *
- * @param props - The owner, their teams and an error from the last action, if any.
+ * @param props - The owner, their teams, whether they may create a team and an error from the last action, if any.
  * @returns The page.
  */
 export function DashboardPage(props: {
 	readonly owner: Owner;
 	readonly teams: ReadonlyArray<TeamOverview>;
+	readonly can_create_team: boolean;
 	readonly error: string | null;
 }) {
 	return (
@@ -105,15 +125,7 @@ export function DashboardPage(props: {
 				{props.teams.map((team) => (
 					<TeamCard team={team} />
 				))}
-				<section class="card">
-					<h2>Create a team</h2>
-					<p class="muted">You join it too: next you get a prompt to set Pigeon up in your own Claude Code.</p>
-					<form method="post" action="/dashboard/teams" class="inline">
-						<input type="text" name="name" placeholder="Team name" required maxlength={60} />
-						<input type="text" name="handle" placeholder="Your handle, e.g. avni" required />
-						<button type="submit">Create</button>
-					</form>
-				</section>
+				{props.can_create_team && <CreateTeam />}
 			</main>
 		</Layout>
 	);

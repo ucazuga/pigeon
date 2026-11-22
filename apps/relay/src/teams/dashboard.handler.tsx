@@ -7,7 +7,7 @@ import { PigeonError } from '../pigeon-error';
 import { render_setup_prompt } from '../setup/setup-guide';
 import { DashboardPage, InviteCreatedPage } from '../web/dashboard';
 import { MEMBER_HANDLE } from './team.schema';
-import { create_team, invite_member, list_owned_teams, revoke_member } from './team.service';
+import { can_create_team, create_team, invite_member, list_owned_teams, revoke_member } from './team.service';
 
 function dashboard_with_error(message: string): string {
 	return `/dashboard?error=${encodeURIComponent(message)}`;
@@ -42,8 +42,11 @@ export const dashboard_routes = new Hono<{ Variables: OwnerVariables }>()
 	.get('/dashboard', async (context) => {
 		const owner = context.get('owner');
 		const teams = await list_owned_teams(owner);
+		const error = context.req.query('error') ?? null;
 
-		return context.html(<DashboardPage owner={owner} teams={teams} error={context.req.query('error') ?? null} />);
+		return context.html(
+			<DashboardPage owner={owner} teams={teams} can_create_team={can_create_team(teams)} error={error} />,
+		);
 	})
 	.post(
 		'/dashboard/teams',

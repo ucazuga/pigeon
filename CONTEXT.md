@@ -38,7 +38,8 @@ The Cloudflare Worker that carries a team's messages. Threads and messages are s
 
 ## Relationships
 
-- An **Owner** can own many teams; each team has exactly one team room.
+- An **Owner** owns one team for now; each team has exactly one team room.
+- A team holds at most three people: the owner and two teammates. Revoked and expired invites free their place.
 - Threads refer to members by member ID, never by handle, so a reused handle never inherits someone else's threads.
 - A **Thread** has exactly one asker and one answerer.
 - A **Draft** belongs to exactly one question and exists only on the answerer's machine.
