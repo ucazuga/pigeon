@@ -4,6 +4,7 @@ import { read_config } from '../infrastructure/config/config';
 import { type Redacted, redact } from '../infrastructure/redacted';
 import { create_token, hash_token } from '../infrastructure/token';
 import { PigeonError } from '../pigeon-error';
+import type { OwnedTeam } from './team.schema';
 
 /*
  * Everything the dashboard and setup flow do with teams: create a team (with the owner's own invite), invite a
@@ -205,18 +206,6 @@ async function prepare_invite_insert(
 	return { insert, invite_code: redact(invite_code) };
 }
 
-async function get_team_name(owner: Owner, team_id: string): Promise<{ readonly name: string }> {
-	const team = await env.DB.prepare('SELECT name FROM teams WHERE team_id = ? AND owner_id = ?')
-		.bind(team_id, owner.owner_id)
-		.first<{ readonly name: string }>();
-
-	if (team === null) {
-		throw new PigeonError('not_found', 'No such team');
-	}
-
-	return team;
-}
-
 /** A team's dashboard view, from its invites (newest first). */
 function to_overview(team_id: string, name: string, invites: ReadonlyArray<Invite>): TeamOverview {
 	const owner_invite = invites.find((invite) => invite.invitee === 'owner' && invite.status !== 'revoked') ?? null;
@@ -269,25 +258,19 @@ export async function list(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
 }
 
 /**
- * One team this owner owns, with invite states.
+ * One owned team, with invite states.
  *
- * @param owner - The signed-in owner.
- * @param team_id - The team.
+ * @param team - The team, checked by `require_owned_team`.
  * @returns The team's overview.
- * @throws {PigeonError} `not_found` for an unknown or foreign team.
  */
-export async function get(owner: Owner, team_id: string): Promise<TeamOverview> {
-	const [team, invite_rows] = await Promise.all([
-		get_team_name(owner, team_id),
-		env.DB.prepare(
-			`SELECT invites.* FROM invites JOIN teams USING (team_id)
-			 WHERE invites.team_id = ? AND teams.owner_id = ? ORDER BY invites.created_at DESC`,
-		)
-			.bind(team_id, owner.owner_id)
-			.all<InviteRow>(),
-	]);
+export async function get(team: OwnedTeam): Promise<TeamOverview> {
+	const { results: invite_rows } = await env.DB.prepare(
+		'SELECT * FROM invites WHERE team_id = ? ORDER BY created_at DESC',
+	)
+		.bind(team.team_id)
+		.all<InviteRow>();
 
-	return to_overview(team_id, team.name, invite_rows.results.map(to_invite));
+	return to_overview(team.team_id, team.name, invite_rows.map(to_invite));
 }
 
 async function count_teams(owner: Owner): Promise<number> {
@@ -352,30 +335,18 @@ export async function create(owner: Owner, name: string, owner_handle: string): 
 	return { team_id, invite_code: owner_invite.invite_code };
 }
 
-/** A new invite, with what the invite page needs. */
-export type CreatedInvite = {
-	/** The team's display name. */
-	readonly team_name: string;
-
-	/** The one-time invite code. Only its hash is stored. */
-	readonly invite_code: Redacted<string>;
-};
-
 /**
  * Invite someone into a team by handle: a teammate, or the owner joining their own team.
  *
- * @param owner - The signed-in owner.
- * @param team_id - The team to invite into.
+ * @param team - The team to invite into, checked by `require_owned_team`.
  * @param handle - The invitee's handle (already normalized).
  * @param invitee - Whether this is a teammate or the owner themselves.
- * @returns The team's name and the plaintext invite code, shown once. Only its hash is stored.
- * @throws {PigeonError} `not_found` for an unknown or foreign team; `conflict` when the handle is taken, the owner
- *   is already in the team, or the team is full (the owner and two teammates).
+ * @returns The plaintext invite code, shown once. Only its hash is stored.
+ * @throws {PigeonError} `conflict` when the handle is taken, the owner is already in the team, or the team is full
+ *   (the owner and two teammates).
  */
-export async function invite(owner: Owner, team_id: string, handle: string, invitee: Invitee): Promise<CreatedInvite> {
-	const team = await get_team_name(owner, team_id);
-
-	const invite = await prepare_invite_insert(team_id, handle, invitee);
+export async function invite(team: OwnedTeam, handle: string, invitee: Invitee): Promise<Redacted<string>> {
+	const invite = await prepare_invite_insert(team.team_id, handle, invitee);
 	let inserted = 0;
 
 	try {
@@ -398,14 +369,11 @@ export async function invite(owner: Owner, team_id: string, handle: string, invi
 		throw new PigeonError('conflict', TEAM_FULL_MESSAGE);
 	}
 
-	return { team_name: team.name, invite_code: invite.invite_code };
+	return invite.invite_code;
 }
 
 /** A fresh setup prompt for an invite nobody has used yet. */
 export type ReissuedInvite = {
-	/** The team's display name. */
-	readonly team_name: string;
-
 	/** Who the invite is for. */
 	readonly invitee: Invitee;
 
@@ -418,19 +386,17 @@ export type ReissuedInvite = {
  * be shown again; this replaces it instead, and the earlier code stops working. Renewing an expired teammate invite
  * takes a seat again, so it is refused when the team is full; the check runs inside the UPDATE.
  *
- * @param owner - The signed-in owner.
- * @param team_id - The team.
+ * @param team - The team, checked by `require_owned_team`.
  * @param handle - Whose invite to renew.
- * @returns The new code, with what the invite page needs.
- * @throws {PigeonError} `not_found` for an unknown team or handle, `conflict` when the invite was already used or the
- *   team is full.
+ * @returns The new code, with who the invite is for.
+ * @throws {PigeonError} `not_found` for an unknown handle, `conflict` when the invite was already used or the team is
+ *   full.
  */
-export async function reissue_invite(owner: Owner, team_id: string, handle: string): Promise<ReissuedInvite> {
-	const team = await get_team_name(owner, team_id);
+export async function reissue_invite(team: OwnedTeam, handle: string): Promise<ReissuedInvite> {
 	const invite_row = await env.DB.prepare(
 		"SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'",
 	)
-		.bind(team_id, handle)
+		.bind(team.team_id, handle)
 		.first<InviteRow>();
 
 	if (invite_row === null) {
@@ -453,7 +419,7 @@ export async function reissue_invite(owner: Owner, team_id: string, handle: stri
 			new Date(now.getTime() + INVITE_TTL_MS).toISOString(),
 			invite_row.invite_code_hash,
 			now.toISOString(),
-			team_id,
+			team.team_id,
 			now.toISOString(),
 			TEAM_SIZE - 1,
 		)
@@ -463,22 +429,19 @@ export async function reissue_invite(owner: Owner, team_id: string, handle: stri
 		throw new PigeonError('conflict', TEAM_FULL_MESSAGE);
 	}
 
-	return { team_name: team.name, invitee: invite_row.invitee, invite_code: redact(invite_code) };
+	return { invitee: invite_row.invitee, invite_code: redact(invite_code) };
 }
 
 /**
  * Revoke a teammate: their invite, and their member token if they joined. Their handle can be invited again.
  *
- * @param owner - The signed-in owner.
- * @param team_id - The team.
+ * @param team - The team, checked by `require_owned_team`.
  * @param handle - The handle to revoke.
- * @throws {PigeonError} `not_found` for an unknown team or handle.
+ * @throws {PigeonError} `not_found` for an unknown handle.
  */
-export async function revoke_member(owner: Owner, team_id: string, handle: string): Promise<void> {
-	await get_team_name(owner, team_id);
-
+export async function revoke_member(team: OwnedTeam, handle: string): Promise<void> {
 	const invite = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'")
-		.bind(team_id, handle)
+		.bind(team.team_id, handle)
 		.first<InviteRow>();
 
 	if (invite === null) {

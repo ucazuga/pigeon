@@ -22,3 +22,15 @@ export type Member = {
 	/** The member's handle, for display and for addressing questions. */
 	readonly handle: string;
 };
+
+/**
+ * A team the signed-in owner owns, as checked by `require_owned_team`. Team service functions that take one trust that
+ * check and do not repeat it.
+ */
+export type OwnedTeam = {
+	/** The team's ID. */
+	readonly team_id: string;
+
+	/** Display name. */
+	readonly name: string;
+};
