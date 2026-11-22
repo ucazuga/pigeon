@@ -33,7 +33,7 @@ export const auth_routes = new Hono()
 			try {
 				await enforce_rate_limit(env.LOGIN_LIMITER, `ip:${client_ip(context)}`);
 				await enforce_rate_limit(env.LOGIN_LIMITER, `email:${email}`);
-				await magic_link_service.request_link(email);
+				await magic_link_service.send(email);
 			} catch (error) {
 				if (error instanceof PigeonError && error.code === 'rate_limited') {
 					return context.html(<LoginPage error={error.message} />, 429);
@@ -63,9 +63,9 @@ export const auth_routes = new Hono()
 			const { token } = context.req.valid('form');
 
 			try {
-				const email = await magic_link_service.consume_link(token);
+				const email = await magic_link_service.consume(token);
 
-				await start_owner_session(context, await owner_service.find_or_create_owner(email));
+				await start_owner_session(context, await owner_service.find_or_create(email));
 			} catch (error) {
 				if (error instanceof PigeonError) {
 					return context.html(<LoginPage error={`${error.message}. Request a new one.`} />, 401);

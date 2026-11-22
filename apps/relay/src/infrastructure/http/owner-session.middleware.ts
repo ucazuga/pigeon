@@ -32,7 +32,7 @@ async function signed_in_owner(context: Context): Promise<Owner | null> {
 		return null;
 	}
 
-	return owner_service.find_owner(owner_id);
+	return owner_service.find(owner_id);
 }
 
 /** Hono middleware for dashboard pages: require a signed-in owner, or clear the cookie and go to sign-in at `/`. */

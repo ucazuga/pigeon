@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { LATEST_PLUGIN_VERSION } from '../setup/plugin-version';
 import type { Member } from '../teams/team.schema';
-import { mcp_tools } from './mcp.tools';
+import { register_tools } from './mcp.tools';
 
 const SERVER_INFO = { name: 'pigeon', version: LATEST_PLUGIN_VERSION } as const;
 
@@ -22,7 +22,7 @@ export function create_mcp_server(member: Member, update_notice: string | null):
 
 	const server = new McpServer(SERVER_INFO, options);
 
-	mcp_tools.register(server, member, update_notice);
+	register_tools(server, member, update_notice);
 
 	return server;
 }

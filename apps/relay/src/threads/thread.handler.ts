@@ -70,7 +70,7 @@ export const thread_routes = new Hono<{ Variables: MemberVariables }>()
 		validate('param', zod.object({ thread_id: zod.string().min(1).max(64) })),
 		async (context) => {
 			const { thread_id } = context.req.valid('param');
-			const question = await thread_service.open_question(context.get('member'), thread_id);
+			const question = await thread_service.get_open_question(context.get('member'), thread_id);
 
 			return context.text(question);
 		},

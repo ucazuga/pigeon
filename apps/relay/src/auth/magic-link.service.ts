@@ -18,7 +18,7 @@ const LINK_TTL_MS = 15 * 60 * 1000;
  * @param email - The address entered on the login page (already validated and lowercased).
  * @throws {PigeonError} `unavailable` when the email cannot be sent.
  */
-export async function request_link(email: string): Promise<void> {
+export async function send(email: string): Promise<void> {
 	const token = create_token();
 
 	await env.DB.prepare('INSERT INTO login_links (token_hash, email, expires_at) VALUES (?, ?, ?)')
@@ -38,7 +38,7 @@ export async function request_link(email: string): Promise<void> {
  * @returns The email address the link was sent to, now verified.
  * @throws {PigeonError} `unauthorized` when the link is unknown, expired or already used.
  */
-export async function consume_link(token: string): Promise<string> {
+export async function consume(token: string): Promise<string> {
 	const now = new Date().toISOString();
 	const consumed_link = await env.DB.prepare(
 		`UPDATE login_links SET consumed_at = ?
