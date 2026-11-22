@@ -5,14 +5,14 @@ A product that lets teammates' Claude Code sessions ask each other questions and
 ## Language
 
 **Owner**:
-The person who signs in to the dashboard with an email magic link and creates the team.
+The person who signs in to the dashboard with an email magic link and creates the team. Owning a team is not the same as being in it: the owner joins as a **member** through their own invite, which they get when they create the team (or later with "Join yourself").
 
 **Member**:
 A person who joined a team through an invite. Addressed within the team by a **handle** (`@ahmet`).
 _Avoid_: User, account
 
 **Invite**:
-A single-use right to join, issued for one handle. Pending → Claimed → Connected (or Revoked).
+A single-use right to join, issued for one handle, either for a teammate or for the owner themselves. Pending → Claimed → Connected (or Revoked); a pending invite past its 7 days is Expired.
 
 **Setup prompt**:
 The one line the owner copies from the dashboard and hands to a member. The member's agent reads it and installs Pigeon itself.

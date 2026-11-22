@@ -22,6 +22,8 @@ td { padding: 8px 4px; border-top: 1px solid #EEF2F7; }
 .status.connected { background: #DDF5E3; color: #1B6B35; }
 .status.revoked, .status.expired { background: #FBE4E5; color: #B8323A; }
 .error { background: #FBE4E5; color: #B8323A; padding: 10px 14px; border-radius: 10px; margin-bottom: 20px; }
+.notice { background: #EEF3FF; padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; }
+.notice p { margin: 0 0 10px; }
 pre.prompt { white-space: pre-wrap; word-break: break-all; background: #F6F8FB; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px; font-size: 13px; }
 .center { min-height: 100vh; display: grid; place-items: center; text-align: center; padding: 20px; }
 `;

@@ -6,15 +6,22 @@ import { create_token, hash_token } from '../infrastructure/token';
 import { PigeonError } from '../pigeon-error';
 
 /*
- * Everything the dashboard and setup flow do with teams: create a team, invite a teammate, revoke one,
- * and turn an invite code into member credentials. Reads and writes D1 directly.
+ * Everything the dashboard and setup flow do with teams: create a team (with the owner's own invite), invite a
+ * teammate, revoke one, and turn an invite code into member credentials. Reads and writes D1 directly.
  */
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Who an invite is for. The owner joins their own team through an invite too: owning a team (the dashboard) and
+ * being a member of it (Pigeon in your own Claude Code) are separate.
+ */
+export type Invitee = 'owner' | 'teammate';
+
 type InviteBase = {
 	readonly team_id: string;
 	readonly handle: string;
+	readonly invitee: Invitee;
 	readonly created_at: Date;
 
 	/** A pending invite can no longer be claimed after this. */
@@ -45,6 +52,7 @@ type InviteRow = {
 
 	/** Stored states. `expired` is not stored; it is a pending invite past `expires_at`. */
 	readonly status: 'pending' | 'claimed' | 'connected' | 'revoked';
+	readonly invitee: Invitee;
 	readonly member_id: string | null;
 	readonly created_at: string;
 	readonly expires_at: string;
@@ -63,6 +71,18 @@ export type TeamOverview = {
 
 	/** Every invite with its onboarding state, newest first. */
 	readonly invites: ReadonlyArray<Invite>;
+
+	/** The owner's own invite while it is not revoked; null when the owner has not joined this team. */
+	readonly owner_invite: Invite | null;
+};
+
+/** A new team and the owner's invite into it. */
+export type CreatedTeam = {
+	/** The new team's ID. */
+	readonly team_id: string;
+
+	/** The owner's one-time invite code, for their own setup prompt. Only its hash is stored. */
+	readonly invite_code: Redacted<string>;
 };
 
 /** What a claimed invite hands to the teammate's machine, exactly once. */
@@ -92,6 +112,7 @@ function to_invite(invite_row: InviteRow): Invite {
 	const invite_fields = {
 		team_id: invite_row.team_id,
 		handle: invite_row.handle,
+		invitee: invite_row.invitee,
 		created_at: new Date(invite_row.created_at),
 		expires_at: new Date(invite_row.expires_at),
 	};
@@ -147,6 +168,44 @@ function is_unique_violation(error: unknown): boolean {
 	return error instanceof Error && error.message.includes('UNIQUE constraint failed');
 }
 
+/** Turn a failed invite insert into the reason the owner sees. */
+function invite_conflict(error: unknown, handle: string): unknown {
+	if (is_unique_violation(error) === false) {
+		return error;
+	}
+
+	// SQLite names the columns of the violated index: (team_id, handle) for a taken handle, (team_id) for a second
+	// active owner invite.
+	if (error instanceof Error && error.message.includes('invites.handle')) {
+		return new PigeonError('conflict', `@${handle} is already invited to this team`);
+	}
+
+	return new PigeonError('conflict', 'You are already in this team. Remove your row first to join again.');
+}
+
+/** An INSERT for a new pending invite, with the code it stores the hash of. */
+async function new_invite(
+	team_id: string,
+	handle: string,
+	invitee: Invitee,
+): Promise<{ readonly insert: D1PreparedStatement; readonly invite_code: Redacted<string> }> {
+	const invite_code = create_token();
+	const now = Date.now();
+	const insert = env.DB.prepare(
+		`INSERT INTO invites (invite_code_hash, team_id, handle, invitee, status, created_at, expires_at)
+		 VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+	).bind(
+		await hash_token(invite_code),
+		team_id,
+		handle,
+		invitee,
+		new Date(now).toISOString(),
+		new Date(now + INVITE_TTL_MS).toISOString(),
+	);
+
+	return { insert, invite_code: redact(invite_code) };
+}
+
 async function owned_team(owner: Owner, team_id: string): Promise<{ readonly name: string }> {
 	const team = await env.DB.prepare('SELECT name FROM teams WHERE team_id = ? AND owner_id = ?')
 		.bind(team_id, owner.owner_id)
@@ -178,67 +237,68 @@ export async function list_owned_teams(owner: Owner): Promise<ReadonlyArray<Team
 			.all<InviteRow>(),
 	]);
 
-	return teams.results.map((team) => ({
-		team_id: team.team_id,
-		name: team.name,
-		invites: invite_rows.results.filter((invite) => invite.team_id === team.team_id).map(to_invite),
-	}));
+	return teams.results.map((team) => {
+		const invites = invite_rows.results.filter((invite) => invite.team_id === team.team_id).map(to_invite);
+		const owner_invite = invites.find((invite) => invite.invitee === 'owner' && invite.status !== 'revoked') ?? null;
+
+		return { team_id: team.team_id, name: team.name, invites, owner_invite };
+	});
 }
 
 /**
- * Create a team owned by the signed-in owner.
+ * Create a team owned by the signed-in owner, and the owner's own invite into it, so they can set Pigeon up on their
+ * machine first.
  *
  * @param owner - The signed-in owner.
  * @param name - The team's display name (already validated).
- * @returns The new team's ID.
+ * @param owner_handle - The handle the owner will use in this team (already normalized).
+ * @returns The new team and the owner's invite code.
  */
-export async function create_team(owner: Owner, name: string): Promise<string> {
+export async function create_team(owner: Owner, name: string, owner_handle: string): Promise<CreatedTeam> {
 	const team_id = crypto.randomUUID();
+	const owner_invite = await new_invite(team_id, owner_handle, 'owner');
 
-	await env.DB.prepare('INSERT INTO teams (team_id, owner_id, name, created_at) VALUES (?, ?, ?, ?)')
-		.bind(team_id, owner.owner_id, name, new Date().toISOString())
-		.run();
+	await env.DB.batch([
+		env.DB.prepare('INSERT INTO teams (team_id, owner_id, name, created_at) VALUES (?, ?, ?, ?)').bind(
+			team_id,
+			owner.owner_id,
+			name,
+			new Date().toISOString(),
+		),
+		owner_invite.insert,
+	]);
 
-	return team_id;
+	return { team_id, invite_code: owner_invite.invite_code };
 }
 
 /**
- * Invite a teammate by handle. Returns the one-time invite code for the copyable setup prompt.
+ * Invite someone into a team by handle: a teammate, or the owner joining their own team.
  *
  * @param owner - The signed-in owner.
  * @param team_id - The team to invite into.
- * @param handle - The teammate's handle (already normalized).
+ * @param handle - The invitee's handle (already normalized).
+ * @param invitee - Whether this is a teammate or the owner themselves.
  * @returns The plaintext invite code, shown once. Only its hash is stored.
- * @throws {PigeonError} `not_found` for an unknown or foreign team; `conflict` when the handle is taken.
+ * @throws {PigeonError} `not_found` for an unknown or foreign team; `conflict` when the handle is taken or the owner
+ *   is already in the team.
  */
-export async function invite_member(owner: Owner, team_id: string, handle: string): Promise<Redacted<string>> {
+export async function invite_member(
+	owner: Owner,
+	team_id: string,
+	handle: string,
+	invitee: Invitee,
+): Promise<Redacted<string>> {
 	await owned_team(owner, team_id);
 
-	const code = create_token();
-	const now = Date.now();
+	const invite = await new_invite(team_id, handle, invitee);
 
 	try {
-		await env.DB.prepare(
-			`INSERT INTO invites (invite_code_hash, team_id, handle, status, created_at, expires_at)
-			 VALUES (?, ?, ?, 'pending', ?, ?)`,
-		)
-			.bind(
-				await hash_token(code),
-				team_id,
-				handle,
-				new Date(now).toISOString(),
-				new Date(now + INVITE_TTL_MS).toISOString(),
-			)
-			.run();
+		await invite.insert.run();
 	} catch (error) {
-		if (is_unique_violation(error)) {
-			throw new PigeonError('conflict', `@${handle} is already invited to this team`);
-		}
-
-		throw error;
+		throw invite_conflict(error, handle);
 	}
 
-	return redact(code);
+	return invite.invite_code;
 }
 
 /**
