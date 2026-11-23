@@ -341,10 +341,6 @@ export async function reissue_invite(team: OwnedTeam, handle: string): Promise<R
 		throw new PigeonError('not_found', `@${handle} has no active invite`);
 	}
 
-	if (invite_row.status !== 'pending') {
-		throw new PigeonError('conflict', `@${handle} already used their prompt. Remove them to start over.`);
-	}
-
 	const invite_code = create_token();
 	const now = new Date();
 
@@ -365,7 +361,7 @@ export async function reissue_invite(team: OwnedTeam, handle: string): Promise<R
 		.run();
 
 	if (renewal.meta.changes === 0) {
-		// The UPDATE also matches nothing when the invite was claimed or revoked since it was read: say that, not "full".
+		// Nothing changed: the invite was used or revoked (before or since it was read), or the team is full. The row says which.
 		const current = await env.DB.prepare('SELECT status FROM invites WHERE invite_code_hash = ?')
 			.bind(invite_row.invite_code_hash)
 			.first<{ readonly status: InviteRow['status'] }>();

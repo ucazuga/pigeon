@@ -14,7 +14,9 @@
 			"!**/.wrangler",
 			"!**/dist",
 			"!**/worker-configuration.d.ts",
-			"!apps/relay/public/js"
+			"!apps/relay/public/js",
+			"!apps/relay/.stryker-tmp",
+			"!apps/relay/reports"
 		]
 	},
 	"formatter": {
