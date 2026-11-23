@@ -161,4 +161,53 @@ describe('invites', () => {
 		expect(after_expiry).toContain('2 of 3 seats');
 		expect(after_expiry).not.toContain('This team is full');
 	});
+
+	test('should refuse a handle that is already invited to the team', async () => {
+		// given
+		const team = await new_team('boss');
+
+		await invite(team, 'lin');
+
+		// when
+		const second_lin = await invite(team, 'lin');
+		const another_boss = await invite(team, 'boss');
+
+		// then
+		expect(form_error(second_lin)).toBe('@lin is already invited to this team');
+		expect(form_error(another_boss)).toBe('@boss is already invited to this team');
+	});
+
+	test('should let the setup guide be read again without using up the invite', async () => {
+		// given
+		// An agent may open the guide more than once before it runs the join command.
+		const team = await new_team();
+		const code = await invite_code(team, 'lin');
+
+		// when
+		const first_read = await request(`/setup/${code}.md`);
+		const second_read = await request(`/setup/${code}.md`);
+		const member_token = await join(code);
+
+		// then
+		expect(first_read.status).toBe(200);
+		expect(await second_read.text()).toContain(code);
+		expect(member_token).not.toBe('');
+	});
+
+	test('should show on the dashboard when a teammate has joined and when their plugin connects', async () => {
+		// given
+		const team = await new_team();
+		const lin_token = await join(await invite_code(team, 'lin'));
+
+		const joined = await dashboard_page(team.owner);
+
+		// when
+		await member_get(lin_token, '/api/unanswered');
+
+		// then
+		const connected = await dashboard_page(team.owner);
+
+		expect(status_on_dashboard(joined, 'lin')).toBe('claimed');
+		expect(status_on_dashboard(connected, 'lin')).toBe('connected');
+	});
 });
