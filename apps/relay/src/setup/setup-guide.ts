@@ -20,24 +20,17 @@ export type SetupGuideInput = {
 };
 
 /**
- * The one-line prompt the owner copies from the dashboard and hands to a teammate. It asks the agent to fetch the
- * guide with curl, so the agent reads it verbatim (a web-fetch tool may summarize it and garble the code).
- *
- * @param origin - Relay origin.
- * @param invite_code - The invite code.
- * @returns A prompt the teammate pastes into Claude Code.
+ * The one-line prompt the owner copies from the dashboard and hands to a teammate. It asks the agent to fetch the guide with curl, so the agent reads it verbatim (a web-fetch tool
+ * may summarize it and garble the code).
  */
 export function render_setup_prompt(origin: string, invite_code: string): string {
 	return `Run \`curl -fsS ${origin}/setup/${invite_code}.md\` and follow the instructions to set me up for Pigeon.`;
 }
 
 /**
- * The setup guide (served as markdown) that the teammate's agent follows to install Pigeon.
- * Joining happens first, with a command that writes the member token to a file without printing it, so the token
- * never enters the transcript. Restarting Claude Code is the last step, because the agent loses its context there.
- *
- * @param input - Relay origin, invite code, team and handle.
- * @returns Markdown instructions addressed to an agent.
+ * The setup guide (served as markdown) that the teammate's agent follows to install Pigeon. Joining happens first, with a command that writes the member token to a file without
+ * printing it, so the token never enters the transcript. Restarting Claude Code is the last step, because the agent loses its context there. Returns markdown instructions
+ * addressed to an agent.
  */
 export function render_setup_guide(input: SetupGuideInput): string {
 	let protocols = '=https';

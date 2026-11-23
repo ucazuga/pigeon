@@ -22,10 +22,8 @@ async function fetch_statuses(url: string): Promise<ReadonlyArray<InviteStatus> 
 }
 
 /**
- * Poll a team's invite statuses until `on_statuses` says to stop. Rounds are skipped while the tab is hidden, and a
- * failed request is tried again next round.
+ * Poll a team's invite statuses until `on_statuses` says to stop. Rounds are skipped while the tab is hidden, and a failed request is tried again next round.
  *
- * @param url - The team's invite status endpoint.
  * @param on_statuses - Called with every response; returns whether to keep polling.
  */
 export function poll_invite_statuses(url: string, on_statuses: (statuses: ReadonlyArray<InviteStatus>) => boolean): void {
@@ -48,13 +46,7 @@ export function poll_invite_statuses(url: string, on_statuses: (statuses: Readon
 	window.setTimeout(poll_round, POLL_INTERVAL_MS);
 }
 
-/**
- * The newest status of one handle's invite.
- *
- * @param statuses - A team's invite statuses, newest first.
- * @param handle - The handle to look up.
- * @returns The status, or null when the team has no invite for that handle.
- */
+/** The newest status of one handle's invite. Returns the status, or null when the team has no invite for that handle. */
 export function status_of(statuses: ReadonlyArray<InviteStatus>, handle: string): string | null {
 	const invite_status = statuses.find((candidate) => candidate.handle === handle) ?? null;
 

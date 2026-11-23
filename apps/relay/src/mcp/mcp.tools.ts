@@ -45,13 +45,7 @@ async function run_tool(action: () => Promise<unknown>, update_notice: string | 
 	}
 }
 
-/**
- * Register every Pigeon tool on a server, bound to the member calling them.
- *
- * @param server - The MCP server to register on.
- * @param member - The authenticated member.
- * @param update_notice - Added to every successful result while the member's plugin is outdated; null otherwise.
- */
+/** Register every Pigeon tool on a server, bound to the member calling them. */
 export function register_tools(server: McpServer, member: Member, update_notice: string | null): void {
 	server.registerTool(
 		'list_teammates',

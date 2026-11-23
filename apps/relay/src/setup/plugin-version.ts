@@ -20,12 +20,9 @@ function is_older(version: string, latest: string): boolean {
 }
 
 /**
- * What to tell a member whose plugin is behind. The plugin sends its version in `X-Pigeon-Plugin-Version`; plugins
- * before 0.3.0 send none, so a missing version counts as outdated. Third-party marketplaces do not auto-update unless
- * the user turned it on, so the relay is the one place that can tell them.
- *
- * @param version - The version the plugin reported, or null when it sent none.
- * @returns The notice, written for the member's Claude to pass on, or null when the plugin is current.
+ * What to tell a member whose plugin is behind. The plugin sends its version in `X-Pigeon-Plugin-Version`; plugins before 0.3.0 send none, so a missing version counts as outdated.
+ * Third-party marketplaces do not auto-update unless the user turned it on, so the relay is the one place that can tell them. Returns the notice, written for the member's Claude
+ * to pass on, or null when the plugin is current.
  */
 export function plugin_update_notice(version: string | null): string | null {
 	if (version && is_older(version, LATEST_PLUGIN_VERSION) === false) {

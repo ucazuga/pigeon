@@ -14,22 +14,12 @@ export type Owner = {
 	readonly email: string;
 };
 
-/**
- * Load an owner by ID, for an existing session.
- *
- * @param owner_id - The owner's ID from the session cookie.
- * @returns The owner, or null when the account no longer exists.
- */
+/** Load an owner by ID, for an existing session. Null when the account no longer exists. */
 export async function find(owner_id: string): Promise<Owner | null> {
 	return env.DB.prepare('SELECT owner_id, email FROM owners WHERE owner_id = ?').bind(owner_id).first<Owner>();
 }
 
-/**
- * Load the owner with this email, creating the account on their first sign-in.
- *
- * @param email - A verified email address.
- * @returns The owner.
- */
+/** Load the owner with this email, creating the account on their first sign-in. */
 export async function find_or_create(email: string): Promise<Owner> {
 	const owner = await env.DB.prepare(
 		`INSERT INTO owners (owner_id, email, created_at) VALUES (?, ?, ?)

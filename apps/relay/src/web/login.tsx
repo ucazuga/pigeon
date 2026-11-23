@@ -1,11 +1,6 @@
 import { Layout } from './layout';
 
-/**
- * Email form for owner sign-in.
- *
- * @param props - An error to show, if the last attempt failed.
- * @returns The page.
- */
+/** Email form for owner sign-in. */
 export function LoginPage(props: { readonly error: string | null }) {
 	return (
 		<Layout title="Sign in · Pigeon">
@@ -27,12 +22,7 @@ export function LoginPage(props: { readonly error: string | null }) {
 	);
 }
 
-/**
- * Shown after a sign-in link was requested.
- *
- * @param props - The address the link went to.
- * @returns The page.
- */
+/** Shown after a sign-in link was requested. */
 export function CheckInboxPage(props: { readonly email: string }) {
 	return (
 		<Layout title="Check your inbox · Pigeon">
@@ -50,9 +40,6 @@ export function CheckInboxPage(props: { readonly email: string }) {
 /**
  * The page a sign-in link opens. Signing in takes a button press, so email scanners that open links
  * cannot use up the link.
- *
- * @param props - The token from the link.
- * @returns The page.
  */
 export function ConfirmSignInPage(props: { readonly token: string }) {
 	return (

@@ -21,11 +21,7 @@ export function pop(elements: Element | Element[]): void {
 	animate(elements, { scale: [0.8, 1], opacity: [0.5, 1] }, { type: spring, bounce: 0.45, duration: 0.45, delay: stagger(0.08) });
 }
 
-/**
- * Fade new text in from just below.
- *
- * @param element - The element whose text just changed.
- */
+/** Fade new text in from just below. */
 export function fade_in(element: Element): void {
 	if (REDUCED_MOTION) {
 		return;
@@ -34,12 +30,7 @@ export function fade_in(element: Element): void {
 	animate(element, { opacity: [0, 1], translate: ['0 4px', '0 0'] }, { duration: 0.3, ease: 'easeOut' });
 }
 
-/**
- * Slide something out to the right, before it is removed.
- *
- * @param element - What is going away.
- * @returns When the motion has finished; at once with reduced motion.
- */
+/** Slide something out to the right, before it is removed. Returns when the motion has finished; at once with reduced motion. */
 export async function slide_out(element: Element): Promise<void> {
 	if (REDUCED_MOTION) {
 		return;

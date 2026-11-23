@@ -16,8 +16,6 @@ export type Redacted<T> = {
  * Wrap a secret so that string conversion and JSON serialization never reveal it.
  *
  * @template T - The secret's type.
- * @param value - The raw secret.
- * @returns The wrapped secret.
  */
 export function redact<T>(value: T): Redacted<T> {
 	return Object.freeze({

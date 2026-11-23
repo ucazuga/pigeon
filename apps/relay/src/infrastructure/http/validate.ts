@@ -10,13 +10,8 @@ function throw_to_error_handler(error: zod.core.$ZodError): never {
 }
 
 /**
- * Hono middleware that parses one part of the request with a Zod schema before the handler runs. Handlers read the
- * parsed value with `context.req.valid(target)` and never parse input themselves.
- *
- * @param target - Which part of the request: `form`, `json`, `param`, `query`, `header` or `cookie`.
- * @param schema - The schema it must match.
- * @param on_invalid - How to answer when it does not. By default the error is thrown, and `handle_error` answers 400.
- * @returns The middleware.
+ * Hono middleware that parses one part of the request with a Zod schema before the handler runs. Handlers read the parsed value with `context.req.valid(target)` and never parse
+ * input themselves.
  */
 export function validate<Target extends keyof ValidationTargets, Schema extends zod.ZodType>(
 	target: Target,
