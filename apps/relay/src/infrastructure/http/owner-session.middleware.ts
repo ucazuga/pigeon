@@ -34,14 +34,14 @@ async function signed_in_owner(context: Context): Promise<Owner | null> {
 	return owner_service.find(owner_id);
 }
 
-/** Hono middleware for dashboard pages: require a signed-in owner, or clear the cookie and go to sign-in at `/`. */
+/** Hono middleware for dashboard pages: require a signed-in owner, or clear the cookie and go to sign-in at `/login`. */
 export const require_owner: MiddlewareHandler<{ Variables: OwnerVariables }> = async (context, next) => {
 	const owner = await signed_in_owner(context);
 
 	if (owner === null) {
 		end_owner_session(context);
 
-		return context.redirect('/');
+		return context.redirect('/login');
 	}
 
 	context.set('owner', owner);

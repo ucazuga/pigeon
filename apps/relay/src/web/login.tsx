@@ -10,7 +10,7 @@ export function LoginPage(props: { readonly error: string | null }) {
 					<h1>Sign in to Pigeon</h1>
 					<p class="muted">We will email you a link. No password needed.</p>
 					{props.error && <p class="error">{props.error}</p>}
-					<form method="post" action="/" class="inline">
+					<form method="post" action="/login" class="inline">
 						<input type="email" name="email" placeholder="you@company.com" required autofocus />
 						<button type="submit" data-pending="Sending…">
 							Email me a link

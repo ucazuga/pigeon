@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pigeon: stop being a meat proxy</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preload" href="/fonts/outfit.woff2" as="font" type="font/woff2" crossorigin>
+<script>if (matchMedia("(prefers-reduced-motion: reduce)").matches === false) { document.documentElement.classList.add("motion"); }</script>
+<style>
+.motion [data-rise] { opacity: 0; }
+@font-face { font-family: Outfit; src: url("/fonts/outfit.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+:root {
+	--bg: #090E1C; --text: #ECF1FA; --muted: #98A4BE; --line: rgb(255 255 255 / 9%);
+	--sky: #CFE8FF; --accent: #8AA6FF; --seal: #E5484D; --beak: #FFB020; --ok: #4CD38A;
+	--term: #0F1628; --term-bar: #141D33; --term-text: #D6DDEB; --term-dim: #7F8BA6;
+	--ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+	--mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+	overflow: hidden; color: var(--text); background-color: var(--bg);
+	background-image:
+		radial-gradient(70% 55% at 50% -5%, rgb(138 166 255 / 22%), transparent 70%),
+		radial-gradient(rgb(255 255 255 / 7%) 1px, transparent 1px);
+	background-size: 100% 100%, 26px 26px;
+	font: 16px/1.5 Outfit, system-ui, -apple-system, "Segoe UI", sans-serif;
+	-webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+
+.app { height: 100svh; max-width: 1280px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 40px); display: grid; grid-template-rows: auto minmax(0, 1fr); }
+main { min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+
+header { display: flex; align-items: center; gap: 10px; height: 68px; }
+header img { width: 32px; height: 32px; }
+.word { font-weight: 800; font-size: 21px; letter-spacing: -0.02em; }
+.nav { margin-left: auto; display: flex; gap: 4px; }
+.navlink { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 10px; color: var(--muted); font-weight: 500; text-decoration: none; transition: color 160ms, background 160ms; }
+.navlink:hover { color: var(--text); background: rgb(255 255 255 / 6%); }
+
+.hero { text-align: center; }
+h1 { margin: 0; font-size: clamp(34px, 4.4vh + 1.4vw, 72px); line-height: 1.02; letter-spacing: -0.03em; font-weight: 800; }
+h1 mark { color: inherit; background: none; text-decoration: underline wavy var(--seal); text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; text-decoration-skip-ink: none; }
+.sub { margin: clamp(10px, 1.8vh, 18px) auto 0; max-width: 560px; color: var(--muted); font-size: clamp(16px, 2vh, 19px); text-wrap: balance; }
+.cta { margin-top: clamp(16px, 2.8vh, 28px); display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.button {
+	display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 20px; border-radius: 12px;
+	background: var(--sky); color: #0B1428; font-weight: 600; text-decoration: none;
+	transition: background 160ms, transform 120ms var(--ease);
+}
+.button:hover { background: #E4F2FF; }
+.button:active { transform: scale(0.97); }
+.button.ghost { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%); }
+.button.ghost:hover { background: rgb(255 255 255 / 6%); }
+
+.acts { position: relative; display: flex; justify-content: center; align-items: center; margin: clamp(18px, 3.2vh, 32px) 0 clamp(14px, 2.6vh, 28px); }
+.tabs { display: inline-flex; padding: 4px; gap: 4px; border-radius: 999px; background: rgb(255 255 255 / 6%); box-shadow: inset 0 0 0 1px var(--line); }
+.tab { border: 0; padding: 7px 16px; border-radius: 999px; background: transparent; color: var(--muted); font: 600 14px Outfit, system-ui, sans-serif; cursor: pointer; transition: background 200ms, color 200ms; }
+.tab:hover { color: var(--text); }
+.tab[aria-pressed=true] { background: var(--text); color: #0B1428; }
+
+.stage { position: relative; margin-top: clamp(96px, 13vh, 160px); display: grid; grid-template-columns: 1fr 1fr; column-gap: clamp(150px, 22vw, 300px); }
+.term, .chat { height: clamp(230px, 36vh, 400px); }
+.term {
+	display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+	background: var(--term); color: var(--term-text); border-radius: 14px;
+	box-shadow: 0 0 0 1px var(--line), 0 30px 70px -30px rgb(0 0 0 / 70%);
+	font: 13px/1.6 var(--mono);
+}
+.bar { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--term-bar); color: var(--term-dim); font-size: 12px; border-bottom: 1px solid var(--line); }
+.dots { display: flex; gap: 6px; }
+.dots i { width: 10px; height: 10px; border-radius: 50%; background: #2A3550; }
+.bar b { color: var(--term-text); font-weight: 500; }
+.body { flex: 1; min-height: 0; padding: 12px 16px 14px; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+#maya .body { padding-left: 34px; }
+#dan .body { padding-right: 34px; }
+.line { white-space: pre-wrap; overflow-wrap: anywhere; }
+.line + .line { margin-top: 3px; }
+.cmd::before, .input::before { content: "› "; color: var(--accent); }
+.cmd { margin: 10px 0 8px; padding: 6px 10px; border-radius: 6px; background: rgb(255 255 255 / 7%); color: #fff; }
+.cmd:first-child { margin-top: 0; }
+.claude { padding-left: 1.3em; text-indent: -1.3em; }
+.claude::before { content: "⏺ "; color: #E8875F; }
+.tag { display: inline-block; margin-right: 8px; padding: 0 6px; border-radius: 4px; background: rgb(138 166 255 / 22%); color: #C9D6FF; font: 600 10.5px/1.7 Outfit, system-ui, sans-serif; text-indent: 0; vertical-align: 1px; }
+.dim { color: var(--term-dim); }
+.pigeon { color: var(--beak); }
+.ok { color: var(--ok); }
+.quote { border-left: 2px solid var(--accent); padding-left: 10px; color: #fff; margin: 4px 0; }
+.choice { white-space: nowrap; }
+.choice span { padding: 1px 6px; border-radius: 4px; }
+.choice span.on { background: var(--accent); color: #0B1020; }
+.sel { background: rgb(138 166 255 / 30%); border-radius: 3px; }
+.caret { display: inline-block; width: 7px; height: 1.1em; margin-left: 1px; vertical-align: -0.2em; background: var(--term-text); animation: blink 1.05s steps(1) infinite; }
+.stage.done .caret { animation: none; opacity: 0; }
+.dot { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--beak); vertical-align: 1px; animation: pulse 1.4s ease-in-out infinite; }
+
+.chat {
+	position: absolute; z-index: 1; top: 50%; left: 50%; width: calc(clamp(150px, 22vw, 300px) + 32px);
+	height: calc(clamp(230px, 36vh, 400px) - 36px); translate: -50% -50%;
+	display: flex; flex-direction: column; overflow: hidden;
+	background: #fff; color: #1F2A44; border-radius: 14px;
+	box-shadow: 0 40px 80px -24px rgb(0 0 0 / 75%), 0 0 0 1px rgb(255 255 255 / 40%);
+	font-size: 13.5px; line-height: 1.45;
+}
+.chat-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #E8EDF5; }
+.pic { position: relative; flex: none; width: 32px; height: 32px; }
+.pic svg { display: block; width: 100%; height: 100%; border-radius: 50%; }
+.presence { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; background: #F2A33A; transition: background 300ms; }
+.chat[data-presence=active] .presence { background: #2FB868; }
+.who { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.who b { font-weight: 700; }
+.status { font-size: 12px; color: #6B7590; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clock { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--seal); }
+.chat-body { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; padding: 12px 14px 8px; overflow: hidden; }
+.day { align-self: center; padding: 1px 10px; border: 1px solid #E8EDF5; border-radius: 999px; color: #8792A8; font-size: 11.5px; font-weight: 600; }
+.msg { display: flex; gap: 10px; }
+.msg .pic { width: 30px; height: 30px; }
+.msg b { font-weight: 700; margin-right: 6px; }
+.msg time { color: #8792A8; font-size: 11.5px; }
+.msg p { margin: 1px 0 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.typing { color: #8792A8; font-size: 12px; font-style: italic; }
+.composer { flex: none; display: flex; align-items: center; gap: 8px; margin: 0 12px 12px; padding: 6px 6px 6px 12px; border: 1px solid #D9E0EC; border-radius: 10px; color: #9AA4B8; font-size: 13px; transition: border-color 200ms; }
+.composer .field { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer.filled { border-color: #8AA6FF; color: #1F2A44; }
+.send { flex: none; width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: #EEF2F8; color: #9AA4B8; font-size: 14px; transition: background 200ms, color 200ms; }
+.composer.filled .send { background: #1F2A44; color: #fff; }
+
+.trail { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; opacity: 0; }
+.trail path { fill: none; stroke: rgb(255 255 255 / 28%); stroke-width: 2; stroke-dasharray: 2 10; stroke-linecap: round; }
+.clip {
+	position: absolute; z-index: 3; left: 0; top: 0; width: 190px; padding: 8px 10px 8px 12px; border-radius: 10px; pointer-events: none;
+	background: #fff; color: #1F2A44; font: 12px/1.4 var(--mono);
+	box-shadow: 0 18px 40px -10px rgb(0 0 0 / 70%), 0 0 0 1px rgb(31 42 68 / 10%);
+}
+.clip span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.clip svg { position: absolute; right: -10px; bottom: -14px; width: 22px; height: 22px; filter: drop-shadow(0 2px 3px rgb(0 0 0 / 40%)); }
+.kbd { display: inline-block; margin-left: 8px; padding: 0 6px; border-radius: 5px; background: #E8EDF7; color: #1F2A44; font: 700 11px/1.6 Outfit, system-ui, sans-serif; vertical-align: 1px; }
+
+.bird { position: absolute; z-index: 2; left: 0; top: 0; width: clamp(76px, 7vw, 116px); pointer-events: none; will-change: transform; opacity: 0; perspective: 700px; }
+.bird .flip { transform-style: preserve-3d; transition: transform 520ms cubic-bezier(0.34, 1.25, 0.45, 1); }
+.bird[data-face=left] .flip { transform: rotateY(180deg); }
+.bird.still .flip { transition: none; }
+.bird svg { display: block; width: 100%; height: auto; overflow: visible; }
+.bird:not(.flying) svg { animation: bob 2.6s ease-in-out infinite; }
+.bird .wing { transform-box: view-box; transform-origin: 230px 212px; }
+.bird .back-wing { transform-box: view-box; transform-origin: 190px 212px; }
+.bird.flying .wing { animation: flap 0.26s ease-in-out infinite alternate; }
+.bird.flying .back-wing { animation: flap 0.26s ease-in-out 0.08s infinite alternate; }
+.bird.landing .wing, .bird.landing .back-wing { animation: settle 0.32s ease-out; }
+
+.score { position: absolute; left: calc(50% + 150px); display: flex; align-items: center; }
+.replay { border: 0; background: none; color: var(--muted); font: 500 14px Outfit, system-ui, sans-serif; cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+.replay:hover { color: var(--text); background: rgb(255 255 255 / 6%); }
+
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes pulse { 50% { opacity: 0.35; transform: scale(0.7); } }
+@keyframes bob { 50% { transform: translateY(-3px); } }
+@keyframes flap { to { transform: scaleY(0.3); } }
+@keyframes settle { from { transform: scaleY(0.55); } }
+
+@media (max-width: 760px) {
+	body { overflow: auto; }
+	header { height: 56px; }
+	.navlink span { display: none; }
+	h1 { font-size: clamp(30px, 9vw, 42px); }
+	.sub { font-size: 15px; }
+	.stage { grid-template-columns: 1fr; column-gap: 0; margin-top: 56px; }
+	.term, .chat { grid-area: 1 / 1; height: clamp(210px, 36vh, 320px); }
+	.chat { position: static; width: auto; translate: none; }
+	.term { font-size: 12px; }
+	#maya .body, #dan .body { padding: 12px 14px; }
+	.stage:not([data-show=dan]) #dan, .stage:not([data-show=maya]) #maya, .stage:not([data-show=chat]) #chat { visibility: hidden; }
+	.score { position: static; margin-left: 8px; }
+}
+@media (min-width: 1500px) and (min-height: 1000px) {
+	.app { max-width: 1480px; }
+	header { height: 84px; }
+	header img { width: 40px; height: 40px; }
+	.word { font-size: 25px; }
+	.navlink { font-size: 17px; }
+	h1 { font-size: 92px; }
+	.sub { max-width: 700px; font-size: 22px; }
+	.button { min-height: 54px; padding: 0 26px; font-size: 18px; border-radius: 14px; }
+	.tab { font-size: 16px; padding: 9px 20px; }
+	.stage { column-gap: 360px; }
+	.term, .chat { height: 520px; }
+	.chat { width: 392px; height: 480px; font-size: 16px; }
+	.term { font-size: 16px; border-radius: 18px; }
+	.bar { font-size: 14px; padding: 12px 18px; }
+	.msg .pic { width: 36px; height: 36px; }
+	.composer { font-size: 15px; }
+	.status { font-size: 14px; }
+	.clip { width: 240px; font-size: 14px; }
+	.bird { width: 136px; }
+	.score { left: calc(50% + 180px); }
+}
+@media (prefers-reduced-motion: reduce) {
+	/* biome-ignore lint/complexity/noImportantStyles: reduced motion has to win over every animation on the page */
+	*, ::before, ::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+	<header>
+		<img src="/pigeon-mark.svg" alt="">
+		<span class="word">pigeon</span>
+		<nav class="nav">
+			<a class="navlink" href="https://github.com/ucazuga/pigeon" aria-label="Pigeon on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg><span>GitHub</span></a>
+			<a class="navlink" href="/login">Sign in</a>
+		</nav>
+	</header>
+
+	<main>
+		<section class="hero">
+			<h1 data-rise>Stop being a <mark>meat proxy</mark>.</h1>
+			<p class="sub" data-rise>Your Claude has the question. Your teammate's Claude has the answer. And you're the one copy-pasting between them.</p>
+			<div class="cta" data-rise>
+				<a class="button" href="/login">Create a team</a>
+				<a class="button ghost" href="https://github.com/ucazuga/pigeon"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>View on GitHub</a>
+			</div>
+		</section>
+
+
+		<section class="stage" data-show="dan" data-rise aria-label="Demo. Today: Dan and Maya copy a question and its answer between their Claudes through team chat, which takes 47 minutes. With Pigeon: the same question goes straight to Maya's Claude, which drafts the answer, and Maya approves it.">
+			<div class="term" id="dan">
+				<div class="bar"><span class="dots"><i></i><i></i><i></i></span><b>dan</b> ~/checkout-web</div>
+				<div class="body"><div class="line input"><span class="typed"></span><span class="caret"></span></div></div>
+			</div>
+			<div class="term" id="maya">
+				<div class="bar"><span class="dots"><i></i><i></i><i></i></span><b>maya</b> ~/billing-worker</div>
+				<div class="body"><div class="line input"><span class="typed"></span><span class="caret"></span></div></div>
+			</div>
+			<div class="chat" id="chat" data-presence="away">
+				<div class="chat-head">
+					<span class="pic" data-face="maya"><i class="presence"></i></span>
+					<span class="who"><b>maya</b><span class="status">📅 In a meeting</span></span>
+					<span class="clock">10:02</span>
+				</div>
+				<div class="chat-body"><div class="day">Today</div></div>
+				<div class="composer"><span class="field">Message maya</span><span class="send" aria-hidden="true">↑</span></div>
+			</div>
+
+			<svg class="trail" aria-hidden="true"><path d=""/></svg>
+			<div class="bird" data-face="right" aria-hidden="true">
+				<div class="flip">
+					<svg viewBox="40 50 350 270" aria-hidden="true">
+						<g class="back-wing">
+							<polygon points="168,214 150,92 214,206" fill="#B4C2D3"/>
+							<polygon points="150,92 190,210 214,206" fill="#C3CEDB"/>
+						</g>
+						<polygon points="128,236 52,206 72,256" fill="#DCE3EC"/>
+						<polygon points="128,236 72,256 60,290" fill="#C3CEDB"/>
+						<polygon points="128,236 60,290 138,286" fill="#D3DBE6"/>
+						<polygon points="122,214 292,196 306,282 138,302" fill="#FFFFFF"/>
+						<polygon points="122,214 212,256 138,302" fill="#F1F4F8"/>
+						<polygon points="292,196 306,282 212,256" fill="#EAEFF5"/>
+						<polygon points="138,302 212,256 306,282" fill="#E2E8F0"/>
+						<polygon points="122,214 292,196 212,256" fill="#FBFCFE"/>
+						<polyline points="122,214 212,256 292,196" fill="none" stroke="#C3CEDB" stroke-width="3" stroke-linejoin="round"/>
+						<polygon points="292,196 318,214 306,282" fill="#D8E0EA"/>
+						<polygon points="292,196 326,136 352,172" fill="#FFFFFF"/>
+						<polygon points="326,136 344,142 352,172" fill="#EEF2F7"/>
+						<polygon points="292,196 352,172 318,214" fill="#DCE3EC"/>
+						<polygon points="352,172 382,180 350,188" fill="#FFB020"/>
+						<polygon points="350,188 382,180 362,192" fill="#E09412"/>
+						<circle cx="330" cy="166" r="5.5" fill="#1F2A44"/>
+						<circle cx="332" cy="164" r="1.8" fill="#FFFFFF"/>
+						<g class="wing">
+							<polygon points="176,212 228,66 262,204" fill="#FFFFFF"/>
+							<polygon points="228,66 262,204 300,112" fill="#DCE3EC"/>
+							<polygon points="228,66 300,112 272,84" fill="#EEF2F7"/>
+							<line x1="228" y1="66" x2="262" y2="204" stroke="#C3CEDB" stroke-width="2"/>
+						</g>
+						<polygon points="176,212 262,204 224,224" fill="#E7ECF2"/>
+						<circle cx="212" cy="256" r="15" fill="#E5484D"/>
+						<circle cx="212" cy="256" r="9" fill="none" stroke="#B8323A" stroke-width="2"/>
+						<circle cx="207" cy="251" r="3.5" fill="#FF8A8F"/>
+					</svg>
+				</div>
+			</div>
+		</section>
+
+		<div class="acts" data-rise>
+			<div class="tabs" role="group" aria-label="Demo">
+				<button class="tab" type="button" data-act="today" aria-pressed="true">Today</button>
+				<button class="tab" type="button" data-act="pigeon" aria-pressed="false">With Pigeon</button>
+			</div>
+			<span class="score" aria-live="polite"></span>
+		</div>
+	</main>
+</div>
+<script type="module" src="/js/landing.js"></script>
+</body>
+</html>

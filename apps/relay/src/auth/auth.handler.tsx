@@ -12,18 +12,18 @@ import * as owner_service from './owner.service';
 /**
  * Owner sign-in pages and magic-link callbacks.
  *
- * - `GET  /`        email form; the home page
- * - `POST /`        send a sign-in link and show "check your inbox"
+ * - `GET  /login`   email form, linked from the landing page (a static asset at `/`)
+ * - `POST /login`   send a sign-in link and show "check your inbox"
  * - `GET  /verify`  a "Sign in" button for the link's token (opening the link alone never signs in)
  * - `POST /verify`  consume the token, set the session cookie, go to `/dashboard`
- * - `POST /logout`  clear the cookie, back to `/`
+ * - `POST /logout`  clear the cookie, back to the landing page
  */
 export const auth_routes = new Hono()
-	.get('/', (context) => {
+	.get('/login', (context) => {
 		return context.html(<LoginPage error={null} />);
 	})
 	.post(
-		'/',
+		'/login',
 		validate('form', zod.object({ email: zod.email().trim().toLowerCase().max(254) }), (_error, context) => {
 			return context.html(<LoginPage error="Enter a valid email address." />, 400);
 		}),
