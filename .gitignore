@@ -7,3 +7,8 @@ dist/
 .DS_Store
 # Built by wrangler from apps/relay/src/web/client
 apps/relay/public/js/
+
+# mutation testing
+apps/relay/.stryker-tmp/
+apps/relay/reports/
+apps/relay/.vitest/

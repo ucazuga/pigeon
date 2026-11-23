@@ -7,7 +7,9 @@
 		"dev": "wrangler dev",
 		"deploy": "wrangler deploy",
 		"db:migrate:local": "wrangler d1 migrations apply pigeon --local",
-		"typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/web/client"
+		"typecheck": "tsc --noEmit -p . && tsc --noEmit -p src/web/client && tsc --noEmit -p test",
+		"test": "vitest run",
+		"test:mutation": "stryker run"
 	},
 	"dependencies": {
 		"@hono/zod-validator": "0.9.1",
@@ -16,8 +18,12 @@
 		"zod": "4.6.7"
 	},
 	"devDependencies": {
+		"@cloudflare/vitest-plugin": "1.9.0",
 		"@cloudflare/workers-types": "5.20261121.1",
+		"@stryker-mutator/core": "10.1.1",
+		"@stryker-mutator/vitest-runner": "10.1.1",
 		"motion": "14.14.0",
+		"vitest": "5.1.1",
 		"wrangler": "4.166.0"
 	},
 	"license": "AGPL-3.0-only"
