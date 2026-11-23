@@ -238,6 +238,7 @@ export async function follow_up(member: Member, thread_id: string, question: str
 	const next_state = { status: 'awaiting_answer', current_message: question_id } as const;
 
 	await save_message(thread, next_state, { message_id: question_id, sender: member.member_id, kind: 'question' }, question, null);
+
 	waitUntil(
 		team_room_of(member.team_id).notify(thread.answerer, {
 			type: 'question_received',
@@ -350,10 +351,11 @@ export async function get_open_question(member: Member, thread_id: string): Prom
 		throw new PigeonError('conflict', 'There is no open question in this thread');
 	}
 
-	const question = await env.DB.prepare('SELECT body FROM messages WHERE message_id = ?').bind(thread.current_message).first<{ readonly body: string | null }>();
+	// While a question is open, current_message is that question, and questions always have text (only declines store none).
+	const question = await env.DB.prepare("SELECT body FROM messages WHERE message_id = ? AND kind = 'question'").bind(thread.current_message).first<{ readonly body: string }>();
 
-	if (question === null || question.body === null) {
-		throw new PigeonError('not_found', 'The open question has no text');
+	if (question === null) {
+		throw new Error(`Thread ${thread_id} is awaiting an answer but its open question is missing`);
 	}
 
 	return question.body;
