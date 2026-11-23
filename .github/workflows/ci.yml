@@ -1,0 +1,52 @@
+# Checks every push and pull request. A push to main that passes is deployed to the hosted relay (pigeon.ucazuga.com):
+# D1 migrations first, then the Worker. Nobody deploys from a laptop.
+#
+# Needs, in the repository settings: the secret CLOUDFLARE_API_TOKEN (a token with Workers Scripts, Workers Routes and
+# D1 edit rights) and the variable CLOUDFLARE_ACCOUNT_ID. Worker secrets (PUBLIC_URL, SESSION_SIGNING_KEY, EMAIL_FROM)
+# stay on Cloudflare; a deploy does not touch them.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    # One deploy at a time, in push order; a newer push waits instead of cancelling a deploy halfway.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    defaults:
+      run:
+        working-directory: apps/relay
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bunx wrangler d1 migrations apply pigeon --remote
+      - run: bunx wrangler deploy
