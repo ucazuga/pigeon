@@ -1,5 +1,6 @@
 # Checks every push and pull request. A push to main that passes is deployed to the hosted relay (pigeon.ucazuga.com):
-# D1 migrations first, then the Worker. Nobody deploys from a laptop.
+# D1 migrations first, then the Worker. Nobody deploys from a laptop. After the deploy, a plugin version that has no
+# tag yet is released as v<version>.
 #
 # Needs, in the repository settings: the secret CLOUDFLARE_API_TOKEN (a token with Workers Scripts, Workers Routes and
 # D1 edit rights) and the variable CLOUDFLARE_ACCOUNT_ID. Worker secrets (PUBLIC_URL, SESSION_SIGNING_KEY, EMAIL_FROM)
@@ -10,6 +11,8 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `edited`: a renamed pull request is checked again.
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -26,6 +29,41 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
+
+  # Pull requests only. The title becomes the squashed commit on main, and the plugin ships from main: Claude Code
+  # updates an installed plugin only when its version changes, so a plugin change without a new version never reaches
+  # people who have it, while new installs get it under the old number.
+  pull-request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Title is a conventional commit
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9-]+\))?!?: [a-z0-9`]'
+          if ! printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "::error::Title must look like 'fix(relay): keep the stream open' (lowercase, conventional commit)."
+            exit 1
+          fi
+      - name: Plugin changes come with a new plugin version
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          manifest=plugins/pigeon/.claude-plugin/plugin.json
+          if git diff --quiet "$BASE"...HEAD -- plugins/pigeon; then
+            exit 0
+          fi
+          old=$(git show "$BASE:$manifest" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')
+          new=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$manifest")
+          newest=$(printf '%s\n%s\n' "$old" "$new" | sort -V | tail -n 1)
+          if [ "$new" = "$old" ] || [ "$newest" != "$new" ]; then
+            echo "::error::plugins/pigeon changed, so raise the version in $manifest (now $new, main has $old) and LATEST_PLUGIN_VERSION with it."
+            exit 1
+          fi
 
   deploy:
     needs: check
@@ -50,3 +88,21 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx wrangler d1 migrations apply pigeon --remote
       - run: bunx wrangler deploy
+
+  release:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Release a new plugin version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' plugins/pigeon/.claude-plugin/plugin.json)
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released."
+            exit 0
+          fi
+          gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --generate-notes
