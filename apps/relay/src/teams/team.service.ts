@@ -192,7 +192,7 @@ async function prepare_invite_insert(team_id: string, handle: string, invitee: I
 	const invite_code = create_token();
 	const now = Date.now();
 	const created_at = new Date(now).toISOString();
-	
+
 	const insert = env.DB.prepare(
 		`INSERT INTO invites (invite_code_hash, team_id, handle, invitee, status, created_at, expires_at)
 		 SELECT ?, ?, ?, ?, 'pending', ?, ?
@@ -347,7 +347,7 @@ export async function reissue_invite(team: OwnedTeam, handle: string): Promise<R
 
 	const invite_code = create_token();
 	const now = new Date();
-	
+
 	const renewal = await env.DB.prepare(
 		`UPDATE invites SET invite_code_hash = ?, expires_at = ?
 		 WHERE invite_code_hash = ? AND status = 'pending'
