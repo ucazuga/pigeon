@@ -106,6 +106,12 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 		}
 
 		this.replay(member.member_id, writer, last_event_id);
+
+		// The newest event id, even when it is someone else's: the client sends it back on reconnect, so a reconnect is never mistaken for a new session (which would repeat the
+		// notices) and replays only what is newer. Sent after the replay, so it is the last id the client keeps.
+		const newest_event = this.ctx.storage.sql.exec<{ id: number }>('SELECT COALESCE(MAX(id), 0) AS id FROM events').one();
+
+		this.send(member.member_id, writer, `id: ${newest_event.id}\n\n`);
 		this.start_heartbeat();
 
 		return new Response(readable, {
@@ -113,23 +119,20 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 		});
 	}
 
-	/**
-	 * Wait until the asker of a thread gets an answer or a decline, or until the timeout.
-	 *
-	 * @param since - Epoch ms when the caller last saw the thread waiting; a reply recorded after it counts.
-	 */
-	async wait_for_reply(member_id: string, thread_id: string, since: number, timeout_ms: number): Promise<void> {
-		const replies_since = this.ctx.storage.sql
+	/** Wait until the asker of a thread gets an answer to, or a decline of, `question_id`, or until the timeout. */
+	async wait_for_reply(member_id: string, thread_id: string, question_id: string, timeout_ms: number): Promise<void> {
+		// Matched by the question, not by time: the Worker's clock and this object's clock can differ.
+		const earlier_replies = this.ctx.storage.sql
 			.exec<{ id: number }>(
-				`SELECT id FROM events WHERE member_id = ? AND thread_id = ? AND created_at >= ?
-				 AND type IN ('answer_received', 'question_declined') LIMIT 1`,
+				`SELECT id FROM events WHERE member_id = ? AND thread_id = ? AND type IN ('answer_received', 'question_declined')
+				 AND json_extract(data, '$.in_reply_to') = ? LIMIT 1`,
 				member_id,
 				thread_id,
-				since,
+				question_id,
 			)
 			.toArray();
 
-		if (replies_since.length > 0) {
+		if (earlier_replies.length > 0) {
 			return;
 		}
 
@@ -153,6 +156,22 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 
 			waiters.add(waiter);
 		});
+	}
+
+	/** A member was removed: close their event streams and let their pending waits return. */
+	async disconnect(member_id: string): Promise<void> {
+		for (const writer of [...(this.streams.get(member_id) ?? [])]) {
+			this.remove(member_id, writer);
+			writer.close().catch(() => this.remove(member_id, writer));
+		}
+
+		for (const waiters of this.waiters.values()) {
+			for (const waiter of [...waiters]) {
+				if (waiter.member_id === member_id) {
+					waiter.resolve();
+				}
+			}
+		}
 	}
 
 	private replay(member_id: string, writer: WritableStreamDefaultWriter<Uint8Array>, last_event_id: number | null): void {

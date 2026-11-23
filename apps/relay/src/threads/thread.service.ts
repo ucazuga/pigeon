@@ -21,6 +21,9 @@ import { team_room_of } from './team-room.durable-object';
  */
 const WAIT_MS = 45 * 1000;
 
+/** SQL condition on `threads`: the asker is still in the team. A removed teammate's open questions leave the inbox. */
+const ASKER_STILL_IN_TEAM_SQL = 'EXISTS (SELECT 1 FROM members WHERE members.member_id = threads.asker AND members.revoked_at IS NULL)';
+
 /** Where a thread's conversation stands. */
 type ThreadStatus = 'awaiting_answer' | 'answered' | 'declined';
 
@@ -106,8 +109,8 @@ async function get_thread_row(member: Member, thread_id: string): Promise<Thread
 }
 
 /**
- * Write a thread move and its message in one batch. The UPDATE only applies if the thread is still in the state
- * that was read; the INSERT only applies if the UPDATE did.
+ * Write a thread move and its message in one batch. The UPDATE only applies if the thread is still in the state that was read, and while the other person is still in the team;
+ * the INSERT only applies if the UPDATE did.
  */
 async function save_message(
 	thread: ThreadRow,
@@ -116,35 +119,56 @@ async function save_message(
 	body: string | null,
 	in_reply_to: string | null,
 ): Promise<void> {
+	let recipient = thread.asker;
+
+	if (message.sender === thread.asker) {
+		recipient = thread.answerer;
+	}
+
 	const now = new Date().toISOString();
 	const batch_results = await env.DB.batch([
 		env.DB.prepare(
 			`UPDATE threads SET status = ?, current_message = ?, updated_at = ?
-			 WHERE thread_id = ? AND status = ? AND current_message = ?`,
-		).bind(next_state.status, next_state.current_message, now, thread.thread_id, thread.status, thread.current_message),
+			 WHERE thread_id = ? AND status = ? AND current_message = ?
+			 AND EXISTS (SELECT 1 FROM members WHERE member_id = ? AND revoked_at IS NULL)`,
+		).bind(next_state.status, next_state.current_message, now, thread.thread_id, thread.status, thread.current_message, recipient),
 		env.DB.prepare(
 			`INSERT INTO messages (message_id, thread_id, sender, kind, body, in_reply_to, sent_at)
 			 SELECT ?, ?, ?, ?, ?, ?, ? WHERE changes() = 1`,
 		).bind(message.message_id, thread.thread_id, message.sender, message.kind, body, in_reply_to, now),
 	]);
-	const thread_update = batch_results[0] ?? null;
+	const [thread_update = null] = batch_results;
 
-	if (thread_update === null || thread_update.meta.changes !== 1) {
-		throw new PigeonError('conflict', 'The thread changed meanwhile; read it again');
+	if (thread_update && thread_update.meta.changes === 1) {
+		return;
 	}
+
+	const still_in_team = await env.DB.prepare('SELECT 1 AS active FROM members WHERE member_id = ? AND revoked_at IS NULL').bind(recipient).first();
+
+	if (still_in_team === null) {
+		throw new PigeonError('conflict', 'The other person is no longer in the team');
+	}
+
+	throw new PigeonError('conflict', 'The thread changed meanwhile; read it again');
 }
 
-async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView> {
-	const [teammates, messages] = await Promise.all([
-		env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?').bind(member.team_id).all<{ readonly member_id: string; readonly handle: string }>(),
-		env.DB.prepare(
-			`SELECT message_id, sender, kind, body, in_reply_to, sent_at FROM messages
-			 WHERE thread_id = ? ORDER BY sent_at, rowid`,
-		)
-			.bind(thread.thread_id)
-			.all<MessageRow>(),
-	]);
-	const handles = new Map(teammates.results.map((teammate) => [teammate.member_id, teammate.handle]));
+/** Every handle in the team by member ID, removed members included, so old threads still show who wrote what. */
+async function get_handles(team_id: string): Promise<ReadonlyMap<string, string>> {
+	const { results: teammates } = await env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?')
+		.bind(team_id)
+		.all<{ readonly member_id: string; readonly handle: string }>();
+
+	return new Map(teammates.map((teammate) => [teammate.member_id, teammate.handle]));
+}
+
+async function build_view(thread: ThreadRow, handles: ReadonlyMap<string, string>): Promise<ThreadView> {
+	const { results: messages } = await env.DB.prepare(
+		`SELECT message_id, sender, kind, body, in_reply_to, sent_at FROM messages
+		 WHERE thread_id = ? ORDER BY sent_at, rowid`,
+	)
+		.bind(thread.thread_id)
+		.all<MessageRow>();
+
 	const handle_of = (member_id: string) => handles.get(member_id) ?? 'unknown';
 
 	let open_question: string | null = null;
@@ -159,7 +183,7 @@ async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView
 		answerer: handle_of(thread.answerer),
 		status: thread.status,
 		open_question,
-		messages: messages.results.map((message) => ({
+		messages: messages.map((message) => ({
 			message_id: message.message_id,
 			from: handle_of(message.sender),
 			kind: message.kind,
@@ -268,6 +292,7 @@ export async function answer(member: Member, thread_id: string, question_id: str
 	const next_state = { status: 'answered', current_message: answer_id } as const;
 
 	await save_message(thread, next_state, { message_id: answer_id, sender: member.member_id, kind: 'answer' }, answer_text, question_id);
+
 	waitUntil(
 		team_room_of(member.team_id).notify(thread.asker, {
 			type: 'answer_received',
@@ -296,6 +321,7 @@ export async function decline(member: Member, thread_id: string, question_id: st
 	const next_state = { status: 'declined', current_message: question_id } as const;
 
 	await save_message(thread, next_state, { message_id: decline_id, sender: member.member_id, kind: 'decline' }, null, question_id);
+
 	waitUntil(
 		team_room_of(member.team_id).notify(thread.asker, {
 			type: 'question_declined',
@@ -310,19 +336,24 @@ export async function decline(member: Member, thread_id: string, question_id: st
 
 /** Threads waiting for this member's answer, with their history. */
 export async function list_inbox(member: Member): Promise<ReadonlyArray<ThreadView>> {
-	const { results: open_threads } = await env.DB.prepare(
-		`SELECT thread_id, asker, answerer, status, current_message FROM threads
-		 WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer' ORDER BY updated_at`,
-	)
-		.bind(member.team_id, member.member_id)
-		.all<ThreadRow>();
+	const [open_threads, handles] = await Promise.all([
+		env.DB.prepare(
+			`SELECT thread_id, asker, answerer, status, current_message FROM threads
+			 WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer' AND ${ASKER_STILL_IN_TEAM_SQL} ORDER BY updated_at`,
+		)
+			.bind(member.team_id, member.member_id)
+			.all<ThreadRow>(),
+		get_handles(member.team_id),
+	]);
 
-	return Promise.all(open_threads.map((thread) => build_view(member, thread)));
+	return Promise.all(open_threads.results.map((thread) => build_view(thread, handles)));
 }
 
 /** How many questions are waiting for this member's answer. */
 export async function count_unanswered(member: Member): Promise<number> {
-	const counted = await env.DB.prepare("SELECT COUNT(*) AS unanswered FROM threads WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer'")
+	const counted = await env.DB.prepare(
+		`SELECT COUNT(*) AS unanswered FROM threads WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer' AND ${ASKER_STILL_IN_TEAM_SQL}`,
+	)
 		.bind(member.team_id, member.member_id)
 		.first<{ readonly unanswered: number }>();
 
@@ -336,7 +367,9 @@ export async function count_unanswered(member: Member): Promise<number> {
 
 /** A thread the member takes part in, with its history. Someone else's thread is `not_found`, like a missing one. */
 export async function get_thread(member: Member, thread_id: string): Promise<ThreadView> {
-	return build_view(member, await get_thread_row(member, thread_id));
+	const [thread, handles] = await Promise.all([get_thread_row(member, thread_id), get_handles(member.team_id)]);
+
+	return build_view(thread, handles);
 }
 
 /** The open question's text, for `pigeon-draft`. Only the person asked can read it (`forbidden`); `conflict` when nothing is open. */
@@ -366,7 +399,6 @@ export async function get_open_question(member: Member, thread_id: string): Prom
  * `not_found` for an unknown thread; `forbidden` unless the member asked.
  */
 export async function wait_for_answer(member: Member, thread_id: string): Promise<WaitResult> {
-	const waiting_since = Date.now();
 	const thread = await get_thread_row(member, thread_id);
 
 	if (thread.asker !== member.member_id) {
@@ -374,7 +406,7 @@ export async function wait_for_answer(member: Member, thread_id: string): Promis
 	}
 
 	if (thread.status === 'awaiting_answer') {
-		await team_room_of(member.team_id).wait_for_reply(member.member_id, thread_id, waiting_since, WAIT_MS);
+		await team_room_of(member.team_id).wait_for_reply(member.member_id, thread_id, thread.current_message, WAIT_MS);
 	}
 
 	const thread_after_wait = await get_thread_row(member, thread_id);
@@ -387,5 +419,5 @@ export async function wait_for_answer(member: Member, thread_id: string): Promis
 		};
 	}
 
-	return { status: 'replied', thread: await build_view(member, thread_after_wait) };
+	return { status: 'replied', thread: await build_view(thread_after_wait, await get_handles(member.team_id)) };
 }
