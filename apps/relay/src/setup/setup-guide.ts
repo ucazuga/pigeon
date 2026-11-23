@@ -2,7 +2,7 @@
 const PLUGIN_REPOSITORY = 'ucazuga/pigeon';
 
 /** The relay the plugin talks to when `PIGEON_RELAY_URL` is not set. Must match plugins/pigeon/.mcp.json. */
-const PLUGIN_DEFAULT_RELAY = 'https://pigeon.example';
+const PLUGIN_DEFAULT_RELAY = 'https://pigeon.ucazuga.com';
 
 /** Everything the setup guide needs to render. */
 export type SetupGuideInput = {

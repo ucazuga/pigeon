@@ -2,7 +2,7 @@
 	"mcpServers": {
 		"pigeon": {
 			"type": "http",
-			"url": "${PIGEON_RELAY_URL:-https://pigeon.example}/mcp",
+			"url": "${PIGEON_RELAY_URL:-https://pigeon.ucazuga.com}/mcp",
 			"headersHelper": "${CLAUDE_PLUGIN_ROOT}/bin/pigeon-token"
 		}
 	}
