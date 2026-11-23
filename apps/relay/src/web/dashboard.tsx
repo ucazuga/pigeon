@@ -150,12 +150,7 @@ function CreateTeam() {
 	);
 }
 
-/**
- * The owner's dashboard: their teams, invites and, while they may create one, a form to create a team.
- *
- * @param props - The owner, their teams, whether they may create a team and an error from the last action, if any.
- * @returns The page.
- */
+/** The owner's dashboard: their teams, invites and, while they may create one, a form to create a team. */
 export function DashboardPage(props: { readonly owner: Owner; readonly teams: ReadonlyArray<TeamOverview>; readonly can_create_team: boolean; readonly error: string | null }) {
 	return (
 		<Layout title="Dashboard · Pigeon">
@@ -195,12 +190,8 @@ function invite_copy(invitee: Invitee, handle: string, team_name: string) {
 }
 
 /**
- * Shown after an invite is created or renewed: the setup prompt to copy, and live progress of the agent that uses it.
- * For the owner's own invite (after creating a team, or "join yourself"), it tells the owner to run it themselves.
- *
- * @param props - The team, the invited handle, who the invite is for, whether it replaces an earlier prompt and the
- *   setup prompt (contains the one-time invite code).
- * @returns The page.
+ * Shown after an invite is created or renewed: the setup prompt to copy, and live progress of the agent that uses it. For the owner's own invite (after creating a team, or "join
+ * yourself"), it tells the owner to run it themselves.
  */
 export function InviteCreatedPage(props: {
 	readonly owner: Owner;

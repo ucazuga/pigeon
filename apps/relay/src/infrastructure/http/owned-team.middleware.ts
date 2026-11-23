@@ -11,10 +11,8 @@ export type OwnedTeamVariables = OwnerVariables & {
 };
 
 /**
- * Hono middleware for routes under `/dashboard/teams/:team_id`: the team must belong to the signed-in owner, and is
- * exposed as `team`. Runs after {@link require_owner}. Another owner's team looks the same as a missing one.
- *
- * @throws {PigeonError} `not_found` for an unknown or foreign team.
+ * Hono middleware for routes under `/dashboard/teams/:team_id`: the team must belong to the signed-in owner, and is exposed as `team`. Runs after {@link require_owner}. Another
+ * owner's team looks the same as a missing one. Throws `not_found` for an unknown or foreign team.
  */
 export const require_owned_team: MiddlewareHandler<{ Variables: OwnedTeamVariables }> = async (context, next) => {
 	const team = await env.DB.prepare('SELECT team_id, name FROM teams WHERE team_id = ? AND owner_id = ?')

@@ -14,9 +14,8 @@ const COOKIE = 'pigeon_session';
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 /**
- * The owner signed in on this request. The cookie holds `<owner_id>.<issued_at_ms>`, signed with SESSION_SIGNING_KEY.
- *
- * @returns The owner, or null when the cookie is missing, tampered with, too old, or names an unknown owner.
+ * The owner signed in on this request. The cookie holds `<owner_id>.<issued_at_ms>`, signed with SESSION_SIGNING_KEY. Returns the owner, or null when the cookie is missing,
+ * tampered with, too old, or names an unknown owner.
  */
 async function signed_in_owner(context: Context): Promise<Owner | null> {
 	// Hono returns undefined for a missing cookie and false for a bad signature: both mean "not signed in".
@@ -49,12 +48,7 @@ export const require_owner: MiddlewareHandler<{ Variables: OwnerVariables }> = a
 	await next();
 };
 
-/**
- * Sign the owner in on this browser.
- *
- * @param context - The Hono request context.
- * @param owner - The owner who just completed a sign-in link.
- */
+/** Sign the owner in on this browser. */
 export async function start_owner_session(context: Context, owner: Owner): Promise<void> {
 	const config = read_config();
 
@@ -67,11 +61,7 @@ export async function start_owner_session(context: Context, owner: Owner): Promi
 	});
 }
 
-/**
- * Sign the owner out on this browser.
- *
- * @param context - The Hono request context.
- */
+/** Sign the owner out on this browser. */
 export function end_owner_session(context: Context): void {
 	deleteCookie(context, COOKIE, { path: '/' });
 }

@@ -3,12 +3,8 @@ import { PigeonError } from '../../pigeon-error';
 import { read_config } from '../config/config';
 
 /**
- * Send a one-time sign-in link through Cloudflare Email Sending. In local development with
- * `MAGIC_LINK_DELIVERY=console` the link is printed to the wrangler console instead.
- *
- * @param to - Recipient email.
- * @param link - The sign-in URL.
- * @throws {PigeonError} `unavailable` when email is not set up on this relay or the provider rejects the message.
+ * Send a one-time sign-in link through Cloudflare Email Sending. In local development with `MAGIC_LINK_DELIVERY=console` the link is printed to the wrangler console instead.
+ * Throws `unavailable` when email is not set up on this relay or the provider rejects the message.
  */
 export async function send_magic_link(to: string, link: URL): Promise<void> {
 	const config = read_config();

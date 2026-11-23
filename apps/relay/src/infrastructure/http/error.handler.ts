@@ -18,10 +18,6 @@ const STATUS_BY_CODE: Record<ErrorCode, ContentfulStatusCode> = {
 /**
  * Hono `onError` handler: the one place where thrown errors become HTTP responses.
  * `PigeonError` and Zod parse failures are expected and returned to the caller; anything else is logged and hidden.
- *
- * @param error - The thrown error.
- * @param context - The Hono request context.
- * @returns The JSON error response.
  */
 export function handle_error(error: Error, context: Context): Response {
 	if (error instanceof PigeonError) {

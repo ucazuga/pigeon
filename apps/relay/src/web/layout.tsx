@@ -103,12 +103,7 @@ type LayoutProps = {
 	readonly children: Child;
 };
 
-/**
- * Shared HTML shell for the sign-in and dashboard pages.
- *
- * @param props - Title and content.
- * @returns The full HTML document.
- */
+/** Shared HTML shell for the sign-in and dashboard pages. */
 export function Layout(props: LayoutProps) {
 	return (
 		<>

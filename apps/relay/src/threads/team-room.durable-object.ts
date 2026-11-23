@@ -11,12 +11,7 @@ type Waiter = {
 	readonly resolve: () => void;
 };
 
-/**
- * The Durable Object for one team.
- *
- * @param team_id - The team.
- * @returns A stub for that team's room.
- */
+/** The room (Durable Object stub) of one team. */
 export function team_room_of(team_id: string): DurableObjectStub<TeamRoom> {
 	return env.TEAM_ROOM.get(env.TEAM_ROOM.idFromName(team_id));
 }
@@ -34,12 +29,7 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 	private readonly waiters = new Map<string, Set<Waiter>>();
 	private heartbeat: ReturnType<typeof setInterval> | null = null;
 
-	/**
-	 * Create the room and its event log.
-	 *
-	 * @param ctx - Durable Object state.
-	 * @param bindings - Worker bindings.
-	 */
+	/** Create the room and its event log. */
 	constructor(ctx: DurableObjectState, bindings: Cloudflare.Env) {
 		super(ctx, bindings);
 		ctx.storage.sql.exec(
@@ -57,7 +47,6 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 	/**
 	 * Record an event for a member and push it to their open streams and waiting calls.
 	 *
-	 * @param member_id - The recipient.
 	 * @param event - What happened. Never contains message text.
 	 */
 	async notify(member_id: string, event: RelayEvent): Promise<void> {
@@ -92,13 +81,11 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 	}
 
 	/**
-	 * Open a member's event stream (`GET /api/events`). Called over RPC with the member the Worker authenticated,
-	 * never by forwarding the HTTP request, so a client cannot spoof identity headers.
+	 * Open a member's event stream (`GET /api/events`). Called over RPC with the member the Worker authenticated, never by forwarding the HTTP request, so a client cannot spoof
+	 * identity headers.
 	 *
-	 * @param member - The authenticated member.
 	 * @param last_event_id - The last event id the client saw, to replay anything newer; null on first connect.
 	 * @param notices - Sent first, without event ids; empty unless this is a first connect.
-	 * @returns A `text/event-stream` response.
 	 */
 	async events(member: Member, last_event_id: number | null, notices: ReadonlyArray<ConnectNotice>): Promise<Response> {
 		const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
@@ -129,10 +116,7 @@ export class TeamRoom extends DurableObject<Cloudflare.Env> {
 	/**
 	 * Wait until the asker of a thread gets an answer or a decline, or until the timeout.
 	 *
-	 * @param member_id - The asker.
-	 * @param thread_id - The thread.
 	 * @param since - Epoch ms when the caller last saw the thread waiting; a reply recorded after it counts.
-	 * @param timeout_ms - How long to wait at most.
 	 */
 	async wait_for_reply(member_id: string, thread_id: string, since: number, timeout_ms: number): Promise<void> {
 		const replies_since = this.ctx.storage.sql

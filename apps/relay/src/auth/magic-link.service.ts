@@ -12,12 +12,7 @@ import { PigeonError } from '../pigeon-error';
 
 const LINK_TTL_MS = 15 * 60 * 1000;
 
-/**
- * Email a one-time sign-in link. Responds identically whether or not the account exists.
- *
- * @param email - The address entered on the login page (already validated and lowercased).
- * @throws {PigeonError} `unavailable` when the email cannot be sent.
- */
+/** Email a one-time sign-in link. Responds identically whether or not the account exists. `unavailable` when the email cannot be sent. */
 export async function send(email: string): Promise<void> {
 	const token = create_token();
 
@@ -31,13 +26,7 @@ export async function send(email: string): Promise<void> {
 	await email_service.send_magic_link(email, sign_in_url);
 }
 
-/**
- * Consume a sign-in link.
- *
- * @param token - The token from the link.
- * @returns The email address the link was sent to, now verified.
- * @throws {PigeonError} `unauthorized` when the link is unknown, expired or already used.
- */
+/** Consume a sign-in link and return the email it was sent to, now verified. `unauthorized` when the link is unknown, expired or already used. */
 export async function consume(token: string): Promise<string> {
 	const now = new Date().toISOString();
 	const consumed_link = await env.DB.prepare(

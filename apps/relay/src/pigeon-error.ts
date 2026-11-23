@@ -9,8 +9,6 @@ export class PigeonError extends Error {
 	/**
 	 * Create an expected failure.
 	 *
-	 * @param code - The kind of failure.
-	 * @param message - Safe, human-readable description.
 	 * @param options - Optional underlying cause, kept for logs only.
 	 */
 	constructor(

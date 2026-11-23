@@ -14,11 +14,9 @@ export type MemberVariables = {
 const BEARER_PREFIX = 'Bearer ';
 
 /**
- * Hono middleware: require `Authorization: Bearer <member token>` and expose the member as `member`.
- * Tokens are looked up by SHA-256 hash in D1 and never logged or echoed. Revoked members are rejected.
- * The first authenticated request also marks the member's invite as connected, for the dashboard.
- *
- * @throws {PigeonError} `unauthorized` for a missing, unknown or revoked token.
+ * Hono middleware: require `Authorization: Bearer <member token>` and expose the member as `member`. Tokens are looked up by SHA-256 hash in D1 and never logged or echoed. Revoked
+ * members are rejected. The first authenticated request also marks the member's invite as connected, for the dashboard. Throws `unauthorized` for a missing, unknown or revoked
+ * token.
  */
 export const require_member: MiddlewareHandler<{ Variables: MemberVariables }> = async (context, next) => {
 	const authorization = context.req.header('Authorization') ?? '';

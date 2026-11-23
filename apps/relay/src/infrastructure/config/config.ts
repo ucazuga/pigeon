@@ -21,7 +21,6 @@ const MIN_SIGNING_KEY_LENGTH = 32;
 /**
  * Read and check the relay's configuration from Worker bindings.
  *
- * @returns The configuration.
  * @throws {Error} When a binding is missing or malformed. The message names the binding, never its value.
  */
 export function read_config(): RelayConfig {

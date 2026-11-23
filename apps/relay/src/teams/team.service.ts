@@ -223,12 +223,7 @@ function to_overview(team_id: string, name: string, invites: ReadonlyArray<Invit
 	};
 }
 
-/**
- * List the teams this owner owns, with invite states.
- *
- * @param owner - The signed-in owner.
- * @returns The owner's teams, newest first.
- */
+/** List the teams this owner owns, with invite states. */
 export async function list(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
 	const [teams, invite_rows] = await Promise.all([
 		env.DB.prepare('SELECT team_id, name FROM teams WHERE owner_id = ? ORDER BY created_at DESC').bind(owner.owner_id).all<{ readonly team_id: string; readonly name: string }>(),
@@ -247,12 +242,7 @@ export async function list(owner: Owner): Promise<ReadonlyArray<TeamOverview>> {
 	});
 }
 
-/**
- * One owned team, with invite states.
- *
- * @param team - The team, checked by `require_owned_team`.
- * @returns The team's overview.
- */
+/** One owned team, with invite states. */
 export async function get(team: OwnedTeam): Promise<TeamOverview> {
 	const { results: invite_rows } = await env.DB.prepare('SELECT * FROM invites WHERE team_id = ? ORDER BY created_at DESC').bind(team.team_id).all<InviteRow>();
 
@@ -270,25 +260,13 @@ async function count_teams(owner: Owner): Promise<number> {
 	return counted.team_count;
 }
 
-/**
- * Whether the owner may create another team, for showing or hiding the form.
- *
- * @param teams - The owner's teams, from {@link list}.
- * @returns True while the owner is under the team limit.
- */
+/** Whether the owner may create another team, for showing or hiding the form. */
 export function can_create(teams: ReadonlyArray<TeamOverview>): boolean {
 	return teams.length < TEAMS_PER_OWNER;
 }
 
 /**
- * Create a team owned by the signed-in owner, and the owner's own invite into it, so they can set Pigeon up on their
- * machine first. An owner can have one team for now.
- *
- * @param owner - The signed-in owner.
- * @param name - The team's display name (already validated).
- * @param owner_handle - The handle the owner will use in this team (already normalized).
- * @returns The new team and the owner's invite code.
- * @throws {PigeonError} `conflict` when the owner already has a team.
+ * Create a team and the owner's own invite into it, so they can set Pigeon up on their machine first. One team per owner for now: a second one is `conflict`.
  */
 export async function create(owner: Owner, name: string, owner_handle: string): Promise<CreatedTeam> {
 	if ((await count_teams(owner)) >= TEAMS_PER_OWNER) {
@@ -320,14 +298,8 @@ export async function create(owner: Owner, name: string, owner_handle: string): 
 }
 
 /**
- * Invite someone into a team by handle: a teammate, or the owner joining their own team.
- *
- * @param team - The team to invite into, checked by `require_owned_team`.
- * @param handle - The invitee's handle (already normalized).
- * @param invitee - Whether this is a teammate or the owner themselves.
- * @returns The plaintext invite code, shown once. Only its hash is stored.
- * @throws {PigeonError} `conflict` when the handle is taken, the owner is already in the team, or the team is full
- *   (the owner and two teammates).
+ * Invite a teammate, or the owner into their own team, and return the invite code. The code is shown once; only its hash is stored.
+ * `conflict` when the handle is taken, the owner is already in, or the team is full.
  */
 export async function invite(team: OwnedTeam, handle: string, invitee: Invitee): Promise<Redacted<string>> {
 	const invite = await prepare_invite_insert(team.team_id, handle, invitee);
@@ -357,15 +329,8 @@ export async function invite(team: OwnedTeam, handle: string, invitee: Invitee):
 }
 
 /**
- * Give an unused invite a new code and a new 7-day window. Only the code's hash is stored, so an earlier prompt cannot
- * be shown again; this replaces it instead, and the earlier code stops working. Renewing an expired teammate invite
- * takes a seat again, so it is refused when the team is full; the check runs inside the UPDATE.
- *
- * @param team - The team, checked by `require_owned_team`.
- * @param handle - Whose invite to renew.
- * @returns The new code, with who the invite is for.
- * @throws {PigeonError} `not_found` for an unknown handle, `conflict` when the invite was already used or the team is
- *   full.
+ * A new code and a new 7 days for an unused invite. Only hashes are stored, so the earlier prompt can't be shown again; this replaces it and the old code stops working.
+ * Renewing an expired teammate invite takes a seat again, so a full team is `conflict` (checked inside the UPDATE), as is an invite that was already used.
  */
 export async function reissue_invite(team: OwnedTeam, handle: string): Promise<ReissuedInvite> {
 	const invite_row = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'").bind(team.team_id, handle).first<InviteRow>();
@@ -403,13 +368,7 @@ export async function reissue_invite(team: OwnedTeam, handle: string): Promise<R
 	return { invitee: invite_row.invitee, invite_code: redact(invite_code) };
 }
 
-/**
- * Revoke a teammate: their invite, and their member token if they joined. Their handle can be invited again.
- *
- * @param team - The team, checked by `require_owned_team`.
- * @param handle - The handle to revoke.
- * @throws {PigeonError} `not_found` for an unknown handle.
- */
+/** Revoke a teammate: their invite, and their member token if they joined. Their handle can be invited again. Throws `not_found` for an unknown handle. */
 export async function revoke_member(team: OwnedTeam, handle: string): Promise<void> {
 	const invite = await env.DB.prepare("SELECT * FROM invites WHERE team_id = ? AND handle = ? AND status != 'revoked'").bind(team.team_id, handle).first<InviteRow>();
 
@@ -425,13 +384,7 @@ export async function revoke_member(team: OwnedTeam, handle: string): Promise<vo
 	]);
 }
 
-/**
- * Look up a still-claimable invite by its code, for the setup guide. Does not consume it.
- *
- * @param code - The invite code from the URL.
- * @returns The team name and handle.
- * @throws {PigeonError} `not_found` when the code is unknown, used, revoked or expired.
- */
+/** Look up a still-claimable invite by its code, for the setup guide. Does not consume it. Throws `not_found` when the code is unknown, used, revoked or expired. */
 export async function get_pending_invite(code: string): Promise<{ readonly team_name: string; readonly handle: string }> {
 	const invite = await env.DB.prepare(
 		`SELECT teams.name AS team_name, invites.handle FROM invites JOIN teams USING (team_id)
@@ -448,13 +401,8 @@ export async function get_pending_invite(code: string): Promise<{ readonly team_
 }
 
 /**
- * Exchange an invite code for member credentials. Called once during agent-driven setup.
- * Claims with a conditional update (still pending, not expired) and creates the member in the same batch, so a code
- * can only be used once.
- *
- * @param code - The invite code.
- * @returns Member credentials, issued exactly once.
- * @throws {PigeonError} `not_found` for an unknown code; `conflict` when expired, already claimed or revoked.
+ * Exchange an invite code for member credentials, once, during setup. The claim is a conditional UPDATE in the same batch as the member insert, so a code works only once.
+ * `not_found` for an unknown code; `conflict` when it expired, was already used or was revoked.
  */
 export async function claim_invite(code: Redacted<string>): Promise<MemberCredentials> {
 	const code_hash = await hash_token(code.unwrap());
@@ -502,11 +450,7 @@ export async function claim_invite(code: Redacted<string>): Promise<MemberCreden
 	};
 }
 
-/**
- * Mark a member's invite as connected the first time they reach the relay. A no-op afterwards.
- *
- * @param member_id - The authenticated member.
- */
+/** Mark a member's invite as connected the first time they reach the relay. A no-op afterwards. */
 export async function mark_connected(member_id: string): Promise<void> {
 	await env.DB.prepare("UPDATE invites SET status = 'connected', connected_at = ? WHERE member_id = ? AND status = 'claimed'").bind(new Date().toISOString(), member_id).run();
 }

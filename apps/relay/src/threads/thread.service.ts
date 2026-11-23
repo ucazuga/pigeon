@@ -104,9 +104,8 @@ async function get_thread_row(member: Member, thread_id: string): Promise<Thread
 }
 
 /**
- * Check that it is the member's turn to reply: they were asked and the question is still open.
- *
- * @throws {PigeonError} `forbidden` when the member was not asked; `conflict` when no question is open.
+ * Check that it is the member's turn to reply: they were asked and the question is still open. Throws `forbidden` when the member was not asked; `conflict` when no question is
+ * open.
  */
 function assert_answerers_turn(thread: ThreadRow, member: Member): void {
 	if (thread.answerer !== member.member_id) {
@@ -119,9 +118,7 @@ function assert_answerers_turn(thread: ThreadRow, member: Member): void {
 }
 
 /**
- * Check that a reply is for the question that is open now, not an earlier one.
- *
- * @throws {PigeonError} `forbidden` or `conflict` as {@link assert_answerers_turn}; `conflict` for another question.
+ * Check that a reply is for the question that is open now, not an earlier one. Throws `forbidden` or `conflict` as {@link assert_answerers_turn}; `conflict` for another question.
  */
 function assert_reply_to_open_question(thread: ThreadRow, member: Member, question_id: string): void {
 	assert_answerers_turn(thread, member);
@@ -206,12 +203,7 @@ async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView
 	};
 }
 
-/**
- * Handles of the member's active teammates.
- *
- * @param member - The member asking.
- * @returns Handles, alphabetically, excluding the member's own.
- */
+/** Handles of the member's active teammates, alphabetically, without their own. */
 export async function list_teammates(member: Member): Promise<ReadonlyArray<string>> {
 	const { results: teammates } = await env.DB.prepare('SELECT handle FROM members WHERE team_id = ? AND member_id != ? AND revoked_at IS NULL ORDER BY handle')
 		.bind(member.team_id, member.member_id)
@@ -221,13 +213,7 @@ export async function list_teammates(member: Member): Promise<ReadonlyArray<stri
 }
 
 /**
- * Open a thread by asking a teammate.
- *
- * @param member - The member asking.
- * @param to - The teammate's handle (already normalized).
- * @param question - The question text.
- * @returns The new thread's and question's IDs.
- * @throws {PigeonError} `not_found` when no active teammate has that handle; `invalid_input` for asking yourself.
+ * Open a thread by asking a teammate. `not_found` when no active teammate has that handle; `invalid_input` for asking yourself.
  */
 export async function ask(member: Member, to: string, question: string): Promise<{ readonly thread_id: string; readonly question_id: string }> {
 	const answerer = await env.DB.prepare('SELECT member_id FROM members WHERE team_id = ? AND handle = ? AND revoked_at IS NULL')
@@ -268,15 +254,7 @@ export async function ask(member: Member, to: string, question: string): Promise
 	return { thread_id, question_id };
 }
 
-/**
- * Ask a follow-up question in an answered or declined thread.
- *
- * @param member - The member asking; must be the thread's asker.
- * @param thread_id - The thread.
- * @param question - The question text.
- * @returns The new question's ID.
- * @throws {PigeonError} `not_found`, `forbidden` or `conflict` per the turn-taking rules.
- */
+/** Ask a follow-up in an answered or declined thread. Only the asker can; otherwise `forbidden`, or `conflict` while a question is still open. */
 export async function follow_up(member: Member, thread_id: string, question: string): Promise<{ readonly question_id: string }> {
 	const thread = await get_thread_row(member, thread_id);
 
@@ -303,15 +281,7 @@ export async function follow_up(member: Member, thread_id: string, question: str
 	return { question_id };
 }
 
-/**
- * Answer the open question in a thread.
- *
- * @param member - The member answering; must be the thread's answerer.
- * @param thread_id - The thread.
- * @param question_id - The question being answered; must be the open one.
- * @param answer_text - The approved answer.
- * @throws {PigeonError} `not_found`, `forbidden` or `conflict` per the turn-taking rules.
- */
+/** Answer the open question. Only the person asked can, and only the question that is open now; otherwise `forbidden` or `conflict`. */
 export async function answer(member: Member, thread_id: string, question_id: string, answer_text: string): Promise<void> {
 	const thread = await get_thread_row(member, thread_id);
 
@@ -331,14 +301,7 @@ export async function answer(member: Member, thread_id: string, question_id: str
 	});
 }
 
-/**
- * Decline the open question in a thread.
- *
- * @param member - The member declining; must be the thread's answerer.
- * @param thread_id - The thread.
- * @param question_id - The question being declined; must be the open one.
- * @throws {PigeonError} `not_found`, `forbidden` or `conflict` per the turn-taking rules.
- */
+/** Decline the open question, with the same rules as {@link answer}. */
 export async function decline(member: Member, thread_id: string, question_id: string): Promise<void> {
 	const thread = await get_thread_row(member, thread_id);
 
@@ -358,12 +321,7 @@ export async function decline(member: Member, thread_id: string, question_id: st
 	});
 }
 
-/**
- * Threads waiting for this member's answer, with their history.
- *
- * @param member - The member whose inbox to read.
- * @returns Open threads, oldest first.
- */
+/** Threads waiting for this member's answer, with their history. */
 export async function list_inbox(member: Member): Promise<ReadonlyArray<ThreadView>> {
 	const { results: open_threads } = await env.DB.prepare(
 		`SELECT thread_id, asker, answerer, status, current_message FROM threads
@@ -375,12 +333,7 @@ export async function list_inbox(member: Member): Promise<ReadonlyArray<ThreadVi
 	return Promise.all(open_threads.map((thread) => build_view(member, thread)));
 }
 
-/**
- * How many questions are waiting for this member's answer.
- *
- * @param member - The member who was asked.
- * @returns The number of threads awaiting their answer.
- */
+/** How many questions are waiting for this member's answer. */
 export async function count_unanswered(member: Member): Promise<number> {
 	const counted = await env.DB.prepare("SELECT COUNT(*) AS unanswered FROM threads WHERE team_id = ? AND answerer = ? AND status = 'awaiting_answer'")
 		.bind(member.team_id, member.member_id)
@@ -394,26 +347,12 @@ export async function count_unanswered(member: Member): Promise<number> {
 	return counted.unanswered;
 }
 
-/**
- * A thread the member takes part in, with its history.
- *
- * @param member - The member reading.
- * @param thread_id - The thread.
- * @returns The thread.
- * @throws {PigeonError} `not_found` when the thread does not exist or the member is not part of it.
- */
+/** A thread the member takes part in, with its history. Someone else's thread is `not_found`, like a missing one. */
 export async function get_thread(member: Member, thread_id: string): Promise<ThreadView> {
 	return build_view(member, await get_thread_row(member, thread_id));
 }
 
-/**
- * The text of the open question, for `pigeon-draft`.
- *
- * @param member - The member asking for it; must be the thread's answerer.
- * @param thread_id - The thread.
- * @returns The question text.
- * @throws {PigeonError} `not_found`; `forbidden` unless the member was asked; `conflict` when nothing is open.
- */
+/** The open question's text, for `pigeon-draft`. Only the person asked can read it (`forbidden`); `conflict` when nothing is open. */
 export async function get_open_question(member: Member, thread_id: string): Promise<string> {
 	const thread = await get_thread_row(member, thread_id);
 
@@ -429,12 +368,8 @@ export async function get_open_question(member: Member, thread_id: string): Prom
 }
 
 /**
- * Wait for the answer to the asker's open question, for up to 45 seconds.
- *
- * @param member - The asker.
- * @param thread_id - The thread.
- * @returns The thread once it is answered or declined, or `still_waiting` after the timeout.
- * @throws {PigeonError} `not_found` for an unknown thread; `forbidden` unless the member asked.
+ * Wait for the answer to the asker's open question, for up to 45 seconds. Returns the thread once it is answered or declined, or `still_waiting` after the timeout. Throws
+ * `not_found` for an unknown thread; `forbidden` unless the member asked.
  */
 export async function wait_for_answer(member: Member, thread_id: string): Promise<WaitResult> {
 	const waiting_since = Date.now();
