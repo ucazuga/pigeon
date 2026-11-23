@@ -1,8 +1,7 @@
-import { env } from 'cloudflare:workers';
+import { env, waitUntil } from 'cloudflare:workers';
 import { PigeonError } from '../pigeon-error';
 import type { Member } from '../teams/team.schema';
 import { team_room_of } from './team-room.durable-object';
-import type { RelayEvent } from './thread.schema';
 
 /*
  * Asking, answering and reading threads, stored in D1.
@@ -11,6 +10,9 @@ import type { RelayEvent } from './thread.schema';
  * question is open at a time, so the answering side always has exactly one draft to review. Each move checks who may
  * make it, then writes with a conditional UPDATE on the state it read, so a concurrent reply that got there first
  * makes this one fail with `conflict` instead of overwriting it.
+ *
+ * After a write, the recipient's team room is told in the background (`waitUntil`): the message is already stored, so a room that cannot be reached must not fail the
+ * request. The recipient still sees the message in their inbox or on their next wait.
  */
 
 /**
@@ -104,31 +106,6 @@ async function get_thread_row(member: Member, thread_id: string): Promise<Thread
 }
 
 /**
- * Check that it is the member's turn to reply: they were asked and the question is still open. Throws `forbidden` when the member was not asked; `conflict` when no question is
- * open.
- */
-function assert_answerers_turn(thread: ThreadRow, member: Member): void {
-	if (thread.answerer !== member.member_id) {
-		throw new PigeonError('forbidden', 'Only the person asked can reply');
-	}
-
-	if (thread.status !== 'awaiting_answer') {
-		throw new PigeonError('conflict', 'There is no open question in this thread');
-	}
-}
-
-/**
- * Check that a reply is for the question that is open now, not an earlier one. Throws `forbidden` or `conflict` as {@link assert_answerers_turn}; `conflict` for another question.
- */
-function assert_reply_to_open_question(thread: ThreadRow, member: Member, question_id: string): void {
-	assert_answerers_turn(thread, member);
-
-	if (thread.current_message !== question_id) {
-		throw new PigeonError('conflict', 'This reply is for a question that is no longer open');
-	}
-}
-
-/**
  * Write a thread move and its message in one batch. The UPDATE only applies if the thread is still in the state
  * that was read; the INSERT only applies if the UPDATE did.
  */
@@ -157,18 +134,6 @@ async function save_message(
 	}
 }
 
-/**
- * Tell the recipient's team room about a saved message. The message is already stored, so a failure here is logged
- * and swallowed: the recipient still sees it in their inbox or on their next wait.
- */
-async function notify_member(team_id: string, member_id: string, event: RelayEvent): Promise<void> {
-	try {
-		await team_room_of(team_id).notify(member_id, event);
-	} catch (error) {
-		console.error(JSON.stringify({ event: 'notify_failed', type: event.type, message: String(error) }));
-	}
-}
-
 async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView> {
 	const [teammates, messages] = await Promise.all([
 		env.DB.prepare('SELECT member_id, handle FROM members WHERE team_id = ?').bind(member.team_id).all<{ readonly member_id: string; readonly handle: string }>(),
@@ -181,6 +146,7 @@ async function build_view(member: Member, thread: ThreadRow): Promise<ThreadView
 	]);
 	const handles = new Map(teammates.results.map((teammate) => [teammate.member_id, teammate.handle]));
 	const handle_of = (member_id: string) => handles.get(member_id) ?? 'unknown';
+
 	let open_question: string | null = null;
 
 	if (thread.status === 'awaiting_answer') {
@@ -243,13 +209,15 @@ export async function ask(member: Member, to: string, question: string): Promise
 		).bind(question_id, thread_id, member.member_id, question, now),
 	]);
 
-	await notify_member(member.team_id, answerer.member_id, {
-		type: 'question_received',
-		thread_id,
-		message_id: question_id,
-		from: member.handle,
-		sent_at: now,
-	});
+	waitUntil(
+		team_room_of(member.team_id).notify(answerer.member_id, {
+			type: 'question_received',
+			thread_id,
+			message_id: question_id,
+			from: member.handle,
+			sent_at: now,
+		}),
+	);
 
 	return { thread_id, question_id };
 }
@@ -270,13 +238,15 @@ export async function follow_up(member: Member, thread_id: string, question: str
 	const next_state = { status: 'awaiting_answer', current_message: question_id } as const;
 
 	await save_message(thread, next_state, { message_id: question_id, sender: member.member_id, kind: 'question' }, question, null);
-	await notify_member(member.team_id, thread.answerer, {
-		type: 'question_received',
-		thread_id,
-		message_id: question_id,
-		from: member.handle,
-		sent_at: new Date().toISOString(),
-	});
+	waitUntil(
+		team_room_of(member.team_id).notify(thread.answerer, {
+			type: 'question_received',
+			thread_id,
+			message_id: question_id,
+			from: member.handle,
+			sent_at: new Date().toISOString(),
+		}),
+	);
 
 	return { question_id };
 }
@@ -285,40 +255,56 @@ export async function follow_up(member: Member, thread_id: string, question: str
 export async function answer(member: Member, thread_id: string, question_id: string, answer_text: string): Promise<void> {
 	const thread = await get_thread_row(member, thread_id);
 
-	assert_reply_to_open_question(thread, member, question_id);
+	if (thread.answerer !== member.member_id) {
+		throw new PigeonError('forbidden', 'Only the person asked can reply');
+	}
+
+	if (thread.status !== 'awaiting_answer' || thread.current_message !== question_id) {
+		throw new PigeonError('conflict', 'This question is no longer open');
+	}
 
 	const answer_id = crypto.randomUUID();
 	const next_state = { status: 'answered', current_message: answer_id } as const;
 
 	await save_message(thread, next_state, { message_id: answer_id, sender: member.member_id, kind: 'answer' }, answer_text, question_id);
-	await notify_member(member.team_id, thread.asker, {
-		type: 'answer_received',
-		thread_id,
-		message_id: answer_id,
-		in_reply_to: question_id,
-		from: member.handle,
-		sent_at: new Date().toISOString(),
-	});
+	waitUntil(
+		team_room_of(member.team_id).notify(thread.asker, {
+			type: 'answer_received',
+			thread_id,
+			message_id: answer_id,
+			in_reply_to: question_id,
+			from: member.handle,
+			sent_at: new Date().toISOString(),
+		}),
+	);
 }
 
 /** Decline the open question, with the same rules as {@link answer}. */
 export async function decline(member: Member, thread_id: string, question_id: string): Promise<void> {
 	const thread = await get_thread_row(member, thread_id);
 
-	assert_reply_to_open_question(thread, member, question_id);
+	if (thread.answerer !== member.member_id) {
+		throw new PigeonError('forbidden', 'Only the person asked can reply');
+	}
+
+	if (thread.status !== 'awaiting_answer' || thread.current_message !== question_id) {
+		throw new PigeonError('conflict', 'This question is no longer open');
+	}
 
 	const decline_id = crypto.randomUUID();
 	const next_state = { status: 'declined', current_message: question_id } as const;
 
 	await save_message(thread, next_state, { message_id: decline_id, sender: member.member_id, kind: 'decline' }, null, question_id);
-	await notify_member(member.team_id, thread.asker, {
-		type: 'question_declined',
-		thread_id,
-		message_id: decline_id,
-		in_reply_to: question_id,
-		from: member.handle,
-		sent_at: new Date().toISOString(),
-	});
+	waitUntil(
+		team_room_of(member.team_id).notify(thread.asker, {
+			type: 'question_declined',
+			thread_id,
+			message_id: decline_id,
+			in_reply_to: question_id,
+			from: member.handle,
+			sent_at: new Date().toISOString(),
+		}),
+	);
 }
 
 /** Threads waiting for this member's answer, with their history. */
@@ -356,7 +342,13 @@ export async function get_thread(member: Member, thread_id: string): Promise<Thr
 export async function get_open_question(member: Member, thread_id: string): Promise<string> {
 	const thread = await get_thread_row(member, thread_id);
 
-	assert_answerers_turn(thread, member);
+	if (thread.answerer !== member.member_id) {
+		throw new PigeonError('forbidden', 'Only the person asked can read the open question');
+	}
+
+	if (thread.status !== 'awaiting_answer') {
+		throw new PigeonError('conflict', 'There is no open question in this thread');
+	}
 
 	const question = await env.DB.prepare('SELECT body FROM messages WHERE message_id = ?').bind(thread.current_message).first<{ readonly body: string | null }>();
 
