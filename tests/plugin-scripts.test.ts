@@ -67,8 +67,13 @@ describe('pigeon-draft', () => {
 		await install_fake('claude', `printf '%s\\n' "$@" > "${sandbox}/argv"; cat > "${sandbox}/stdin"; printf '{"result":"draft","session_id":"${SESSION_ID}"}'`);
 	});
 
-	test('fetches the question itself and passes it on stdin, never in argv', async () => {
+	test('should fetch the question itself and pass it on stdin, never in argv', async () => {
+		// given: a question that looks like a command-line flag (beforeEach)
+
+		// when
 		const result = await run('pigeon-draft', [sandbox, 'thread-1']);
+
+		// then
 		const argv = await recorded_argv();
 
 		expect(result.exit_code).toBe(0);
@@ -77,8 +82,13 @@ describe('pigeon-draft', () => {
 		expect(argv).not.toContain('--dangerously-skip-permissions');
 	});
 
-	test('runs read-only with no allow rules, so reads outside the repository are denied', async () => {
+	test('should draft read-only with no allow rules, so reads outside the repository are denied', async () => {
+		// given: a joined member (beforeEach)
+
+		// when
 		await run('pigeon-draft', [sandbox, 'thread-1']);
+
+		// then
 		const argv = await recorded_argv();
 
 		expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('dontAsk');
@@ -88,20 +98,28 @@ describe('pigeon-draft', () => {
 		expect(argv).toContain('--strict-mcp-config');
 	});
 
-	test('keeps the drafting session locally and resumes it for follow-ups', async () => {
+	test('should keep the drafting session locally and resume it for a follow-up', async () => {
+		// given
 		await run('pigeon-draft', [sandbox, 'thread-1']);
 
 		expect(await recorded_argv()).not.toContain('--resume');
 		expect((await readFile(join(sandbox, 'home', 'drafts', 'thread-1.session'), 'utf8')).trim()).toBe(SESSION_ID);
 
+		// when
 		await run('pigeon-draft', [sandbox, 'thread-1']);
 
+		// then
 		expect((await recorded_argv()).slice(-2)).toEqual(['--resume', SESSION_ID]);
 	});
 
-	test('refuses a thread id that could escape the URL or path', async () => {
-		const result = await run('pigeon-draft', [sandbox, '../../etc']);
+	test('should refuse a thread id that could escape the URL or path', async () => {
+		// given
+		const thread_id = '../../etc';
 
+		// when
+		const result = await run('pigeon-draft', [sandbox, thread_id]);
+
+		// then
 		expect(result.exit_code).toBe(2);
 	});
 });
@@ -109,51 +127,68 @@ describe('pigeon-draft', () => {
 describe('pigeon-join', () => {
 	const fake_relay = `cat > /dev/null; while [ "$#" -gt 0 ]; do if [ "$1" = "-o" ]; then printf '%s' '${CREDENTIALS}' > "$2"; fi; shift; done`;
 
-	test('writes credentials with mode 600 and never prints the token', async () => {
+	test('should write credentials with mode 600 and never print the token', async () => {
+		// given
 		await install_fake('curl', fake_relay);
 
+		// when
 		const result = await run('pigeon-join', ['invite_abc', 'https://relay.test/']);
-		const file = join(sandbox, 'home', 'credentials.json');
 
+		// then
 		expect(result.exit_code).toBe(0);
 		expect(result.stdout).toContain('@ahmet');
 		expect(result.stdout + result.stderr).not.toContain('tok_secret_value');
-		expect((await stat(file)).mode & 0o777).toBe(0o600);
+		expect((await stat(join(sandbox, 'home', 'credentials.json'))).mode & 0o777).toBe(0o600);
 	});
 
-	test('refuses plain http to a remote relay', async () => {
+	test('should refuse plain http to a remote relay', async () => {
+		// given
 		await install_fake('curl', fake_relay);
 
+		// when
 		const result = await run('pigeon-join', ['invite_abc', 'http://relay.test']);
 
+		// then
 		expect(result.exit_code).toBe(2);
 	});
 
-	test('does not replace an existing membership without --force', async () => {
+	test('should not replace an existing membership without --force', async () => {
+		// given
 		await install_fake('curl', fake_relay);
 		await write_credentials();
 
-		expect((await run('pigeon-join', ['invite_abc', 'https://relay.test'])).exit_code).toBe(1);
-		expect((await run('pigeon-join', ['--force', 'invite_abc', 'https://relay.test'])).exit_code).toBe(0);
+		// when
+		const without_force = await run('pigeon-join', ['invite_abc', 'https://relay.test']);
+		const with_force = await run('pigeon-join', ['--force', 'invite_abc', 'https://relay.test']);
+
+		// then
+		expect(without_force.exit_code).toBe(1);
+		expect(with_force.exit_code).toBe(0);
 	});
 
-	test('keeps existing credentials when the relay returns something else', async () => {
+	test('should write no credentials when the relay returns something else', async () => {
+		// given
 		await install_fake('curl', `cat > /dev/null; while [ "$#" -gt 0 ]; do if [ "$1" = "-o" ]; then echo '<html>' > "$2"; fi; shift; done`);
 
+		// when
 		const result = await run('pigeon-join', ['invite_abc', 'https://relay.test']);
 
+		// then
 		expect(result.exit_code).toBe(1);
 		expect(await Bun.file(join(sandbox, 'home', 'credentials.json')).exists()).toBe(false);
 	});
 });
 
 describe('pigeon-token', () => {
-	test('prints the bearer header only for the relay the token came from', async () => {
+	test('should print the bearer header only for the relay the token came from', async () => {
+		// given
 		await write_credentials();
 
+		// when
 		const matching = await run('pigeon-token', [], { CLAUDE_CODE_MCP_SERVER_URL: 'https://relay.test/mcp' });
 		const other = await run('pigeon-token', [], { CLAUDE_CODE_MCP_SERVER_URL: 'https://attacker.test/mcp' });
 
+		// then
 		expect(JSON.parse(matching.stdout)).toEqual({
 			Authorization: 'Bearer tok_secret_value',
 			'X-Pigeon-Plugin-Version': expect.stringMatching(/^\d+\.\d+\.\d+$/),
@@ -162,48 +197,62 @@ describe('pigeon-token', () => {
 		expect(other.stdout).toBe('');
 	});
 
-	test('exits 3 with guidance when not joined', async () => {
+	test('should exit 3 with guidance when not joined', async () => {
+		// given: no credentials
+
+		// when
 		const result = await run('pigeon-token', []);
 
+		// then
 		expect(result.exit_code).toBe(3);
 		expect(result.stderr).toContain('pigeon-join');
 	});
 });
 
 describe('pigeon-pending', () => {
-	test('adds a reminder when questions are waiting', async () => {
+	test('should add a reminder when questions are waiting', async () => {
+		// given
 		await write_credentials();
 		await install_fake('curl', `cat >"${'$'}{HOME}/curl-config"; echo "$@" >"${'$'}{HOME}/argv"; printf 2`);
 
+		// when
 		const result = await run('pigeon-pending', []);
 
+		// then
 		expect(result.exit_code).toBe(0);
 		expect(result.stdout).toContain('2 question(s) from teammates are waiting');
 		expect((await recorded_argv()).join(' ')).toContain('https://relay.test/api/unanswered');
 	});
 
-	test('prints nothing when no question is waiting', async () => {
+	test('should print nothing when no question is waiting', async () => {
+		// given
 		await write_credentials();
 		await install_fake('curl', 'cat >/dev/null; printf 0');
 
+		// when
 		const result = await run('pigeon-pending', []);
 
+		// then
 		expect(result.exit_code).toBe(0);
 		expect(result.stdout).toBe('');
 	});
 
-	test('never blocks the prompt: not joined, relay down or an unexpected reply print nothing', async () => {
+	test('should never block the prompt when not joined, the relay is down or the reply is unexpected', async () => {
+		// given, when: not joined
 		const not_joined = await run('pigeon-pending', []);
 
+		// given, when: relay down
 		await write_credentials();
 		await install_fake('curl', 'cat >/dev/null; exit 7');
 
 		const relay_down = await run('pigeon-pending', []);
 
+		// given, when: a reply that is not a number
 		await install_fake('curl', 'cat >/dev/null; printf "<html>sign in</html>"');
 
 		const unexpected = await run('pigeon-pending', []);
 
+		// then
 		for (const result of [not_joined, relay_down, unexpected]) {
 			expect(result.exit_code).toBe(0);
 			expect(result.stdout).toBe('');
