@@ -3,7 +3,7 @@ import { dashboard_page, new_team, open_sign_in_link, request, sign_in } from '.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Where the dashboard sends this browser: '' when it shows the dashboard, '/' when it sends the browser to sign in. */
+/** Where the dashboard sends this browser: '' when it shows the dashboard, '/login' when it sends the browser to sign in. */
 async function dashboard_redirect(cookie: string): Promise<string> {
 	const response = await request('/dashboard', { redirect: 'manual', headers: { cookie } });
 
@@ -47,7 +47,7 @@ describe('owner session', () => {
 
 		// then
 		expect(after_29_days).toBe('');
-		expect(after_30_days).toBe('/');
+		expect(after_30_days).toBe('/login');
 	});
 
 	test('should not let an owner edit their cookie into someone else', async () => {
@@ -63,7 +63,7 @@ describe('owner session', () => {
 		const unchanged = await dashboard_redirect(attacker.cookie);
 
 		// then
-		expect(forged).toBe('/');
+		expect(forged).toBe('/login');
 		expect(unchanged).toBe('');
 	});
 
@@ -74,7 +74,7 @@ describe('owner session', () => {
 
 		// when
 		const statuses = await Promise.all(
-			['/', '/verify', '/logout', '/dashboard/teams', `/dashboard/teams/${team.team_id}/invites`].map(async (path) => {
+			['/login', '/verify', '/logout', '/dashboard/teams', `/dashboard/teams/${team.team_id}/invites`].map(async (path) => {
 				const response = await request(path, { method: 'POST', redirect: 'manual', headers: from_another_site, body: 'email=a%40b.test&handle=mallory&name=Evil' });
 
 				return response.status;

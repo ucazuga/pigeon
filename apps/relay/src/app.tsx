@@ -11,7 +11,7 @@ import { thread_routes } from './threads/thread.handler';
 export const app = new Hono()
 	.onError(handle_error)
 	// Browser forms only: reject cross-site form posts to sign-in and dashboard routes.
-	.use('/', csrf())
+	.use('/login', csrf())
 	.use('/verify', csrf())
 	.use('/logout', csrf())
 	.use('/dashboard/*', csrf())

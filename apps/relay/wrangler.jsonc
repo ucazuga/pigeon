@@ -7,7 +7,7 @@
 	"assets": { "directory": "./public" },
 	// Bundles the pages' script (src/web/client) into public/js before every `wrangler dev` and `wrangler deploy`.
 	"build": {
-		"command": "bun build src/web/client/pigeon.client.ts --outfile public/js/pigeon.js --minify",
+		"command": "bun build src/web/client/pigeon.client.ts --outfile public/js/pigeon.js --minify && bun build src/web/client/landing.client.ts --outfile public/js/landing.js --minify",
 		"watch_dir": "src"
 	},
 	"observability": { "enabled": true },

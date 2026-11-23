@@ -71,7 +71,7 @@ export function invite_code_in(page: string): string {
 export async function open_sign_in_link(email: string): Promise<Response> {
 	const console_log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
-	await submit_form('/', { email }, { cookie: '' });
+	await submit_form('/login', { email }, { cookie: '' });
 
 	const printed = console_log.mock.calls.map((call) => String(call[0])).join('\n');
 
