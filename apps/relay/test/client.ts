@@ -67,8 +67,8 @@ export function invite_code_in(page: string): string {
 	return first_match(/\/setup\/([A-Za-z0-9_-]+)\.md/, page);
 }
 
-/** Sign in with a magic link. A local relay prints the link to the console, where it is read from. */
-export async function sign_in(email: string): Promise<Owner> {
+/** Ask for a magic link and press its "Sign in" button. A local relay prints the link to the console, where it is read from. The response sets the session cookie. */
+export async function open_sign_in_link(email: string): Promise<Response> {
 	const console_log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
 	await submit_form('/', { email }, { cookie: '' });
@@ -78,17 +78,28 @@ export async function sign_in(email: string): Promise<Owner> {
 	console_log.mockRestore();
 
 	const token = first_match(new RegExp(`sign-in link for ${email}: \\S+token=([A-Za-z0-9_-]+)`), printed);
-	const verified = await submit_form('/verify', { token }, { cookie: '' });
+
+	return submit_form('/verify', { token }, { cookie: '' });
+}
+
+/** Sign in with a magic link. */
+export async function sign_in(email: string): Promise<Owner> {
+	const verified = await open_sign_in_link(email);
 	const [cookie = ''] = (verified.headers.get('set-cookie') ?? '').split(';');
 
 	return { cookie };
+}
+
+/** The dashboard page as the owner sees it. */
+export async function dashboard_page(owner: Owner): Promise<string> {
+	return (await request('/dashboard', { headers: { cookie: owner.cookie } })).text();
 }
 
 /** A new owner with a new team. */
 export async function new_team(owner_handle = 'boss'): Promise<CreatedTeam> {
 	const owner = await sign_in(`owner-${crypto.randomUUID()}@example.test`);
 	const created = await submit_form('/dashboard/teams', { name: 'Team', handle: owner_handle }, owner);
-	const dashboard = await (await request('/dashboard', { headers: { cookie: owner.cookie } })).text();
+	const dashboard = await dashboard_page(owner);
 
 	return {
 		owner,
@@ -140,18 +151,18 @@ export function member_get(member_token: string, path: string): Promise<Response
 	return request(path, { headers: { authorization: `Bearer ${member_token}` } });
 }
 
-/** What an MCP tool returned: its JSON result, or the error text. */
-export type ToolResult = { readonly ok: true; readonly value: Record<string, unknown> } | { readonly ok: false; readonly error: string };
+/** What an MCP tool returned: its JSON result and any notes after it, or the error text. */
+export type ToolResult = { readonly ok: true; readonly value: Record<string, unknown>; readonly notes: ReadonlyArray<string> } | { readonly ok: false; readonly error: string };
 
 type McpResponse = { readonly result: { readonly isError?: boolean; readonly content: ReadonlyArray<{ readonly text: string }> } };
 
-/** Call a Pigeon MCP tool as a member's Claude Code does. */
-export async function call_tool(member_token: string, tool: string, tool_arguments: Record<string, unknown>): Promise<ToolResult> {
+/** Call a Pigeon MCP tool as a member's Claude Code does, from a plugin at `plugin_version`. */
+export async function call_tool(member_token: string, tool: string, tool_arguments: Record<string, unknown>, plugin_version = PLUGIN_VERSION): Promise<ToolResult> {
 	const response = await request('/mcp', {
 		method: 'POST',
 		headers: {
 			authorization: `Bearer ${member_token}`,
-			'x-pigeon-plugin-version': PLUGIN_VERSION,
+			'x-pigeon-plugin-version': plugin_version,
 			'content-type': 'application/json',
 			accept: 'application/json, text/event-stream',
 		},
@@ -160,13 +171,13 @@ export async function call_tool(member_token: string, tool: string, tool_argumen
 	// The MCP handler answers as a one-event stream: the JSON-RPC message is on the `data:` line.
 	const message = first_match(/^data: (.*)$/m, await response.text());
 	const { result } = JSON.parse(message) as McpResponse;
-	const [content = { text: '' }] = result.content;
+	const [content = { text: '' }, ...notes] = result.content;
 
 	if (result.isError) {
 		return { ok: false, error: content.text };
 	}
 
-	return { ok: true, value: JSON.parse(content.text) as Record<string, unknown> };
+	return { ok: true, value: JSON.parse(content.text) as Record<string, unknown>, notes: notes.map((note) => note.text) };
 }
 
 /** Call a Pigeon MCP tool that must succeed, and return its JSON result. */

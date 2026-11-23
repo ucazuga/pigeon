@@ -52,6 +52,21 @@ describe('live events', () => {
 		expect(reconnect).not.toContain('unanswered_questions');
 	});
 
+	test('should replay on reconnect only what arrived while disconnected', async () => {
+		// given
+		const team = await team_of_two();
+		const seen = await call_tool_ok(team.boss, 'ask_teammate', { to: 'lin', question: 'q1' });
+		const first_connect = await read_events(team.lin, {}, (text) => HAS_EVENT_ID.test(text));
+		const missed = await call_tool_ok(team.boss, 'ask_teammate', { to: 'lin', question: 'q2' });
+
+		// when
+		const reconnect = await read_events(team.lin, { 'last-event-id': first_match(/\nid: (\d+)/, first_connect) }, (text) => text.includes(String(missed.question_id)));
+
+		// then
+		expect(reconnect).toContain(`"message_id":"${missed.question_id}"`);
+		expect(reconnect).not.toContain(String(seen.question_id));
+	});
+
 	test('should close the event stream of a member who is removed', async () => {
 		// given
 		const team = await team_of_two();
