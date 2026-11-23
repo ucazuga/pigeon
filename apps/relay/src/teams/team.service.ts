@@ -1,9 +1,10 @@
-import { env } from 'cloudflare:workers';
+import { env, waitUntil } from 'cloudflare:workers';
 import type { Owner } from '../auth/owner.service';
 import { read_config } from '../infrastructure/config/config';
 import { type Redacted, redact } from '../infrastructure/redacted';
 import { create_token, hash_token } from '../infrastructure/token';
 import { PigeonError } from '../pigeon-error';
+import { team_room_of } from '../threads/team-room.durable-object';
 import type { OwnedTeam } from './team.schema';
 
 /*
@@ -191,6 +192,7 @@ async function prepare_invite_insert(team_id: string, handle: string, invitee: I
 	const invite_code = create_token();
 	const now = Date.now();
 	const created_at = new Date(now).toISOString();
+	
 	const insert = env.DB.prepare(
 		`INSERT INTO invites (invite_code_hash, team_id, handle, invitee, status, created_at, expires_at)
 		 SELECT ?, ?, ?, ?, 'pending', ?, ?
@@ -345,6 +347,7 @@ export async function reissue_invite(team: OwnedTeam, handle: string): Promise<R
 
 	const invite_code = create_token();
 	const now = new Date();
+	
 	const renewal = await env.DB.prepare(
 		`UPDATE invites SET invite_code_hash = ?, expires_at = ?
 		 WHERE invite_code_hash = ? AND status = 'pending'
@@ -362,6 +365,19 @@ export async function reissue_invite(team: OwnedTeam, handle: string): Promise<R
 		.run();
 
 	if (renewal.meta.changes === 0) {
+		// The UPDATE also matches nothing when the invite was claimed or revoked since it was read: say that, not "full".
+		const current = await env.DB.prepare('SELECT status FROM invites WHERE invite_code_hash = ?')
+			.bind(invite_row.invite_code_hash)
+			.first<{ readonly status: InviteRow['status'] }>();
+
+		if (current === null || current.status === 'revoked') {
+			throw new PigeonError('not_found', `@${handle} has no active invite`);
+		}
+
+		if (current.status !== 'pending') {
+			throw new PigeonError('conflict', `@${handle} already used their prompt. Remove them to start over.`);
+		}
+
 		throw new PigeonError('conflict', TEAM_FULL_MESSAGE);
 	}
 
@@ -377,11 +393,24 @@ export async function revoke_member(team: OwnedTeam, handle: string): Promise<vo
 	}
 
 	const now = new Date().toISOString();
-
-	await env.DB.batch([
+	// The member is found through the invite inside the batch, not from the row read above: if the invite was claimed in between, that row has no member yet.
+	const [member_revocation = null] = await env.DB.batch<{ readonly member_id: string }>([
+		env.DB.prepare(
+			`UPDATE members SET revoked_at = ?
+			 WHERE member_id = (SELECT member_id FROM invites WHERE invite_code_hash = ?) AND revoked_at IS NULL
+			 RETURNING member_id`,
+		).bind(now, invite.invite_code_hash),
 		env.DB.prepare("UPDATE invites SET status = 'revoked', revoked_at = ? WHERE invite_code_hash = ?").bind(now, invite.invite_code_hash),
-		env.DB.prepare('UPDATE members SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL').bind(now, invite.member_id),
 	]);
+
+	if (member_revocation === null) {
+		return;
+	}
+
+	// Their token is dead now; also close the event stream they may still have open.
+	for (const revoked of member_revocation.results) {
+		waitUntil(team_room_of(team.team_id).disconnect(revoked.member_id));
+	}
 }
 
 /** Look up a still-claimable invite by its code, for the setup guide. Does not consume it. Throws `not_found` when the code is unknown, used, revoked or expired. */
@@ -417,6 +446,7 @@ export async function claim_invite(code: Redacted<string>): Promise<MemberCreden
 	const member_id = crypto.randomUUID();
 	const member_token = create_token();
 	const now = new Date().toISOString();
+
 	const claim_results = await env.DB.batch([
 		env.DB.prepare(
 			`UPDATE invites SET status = 'claimed', member_id = ?, claimed_at = ?
@@ -427,7 +457,8 @@ export async function claim_invite(code: Redacted<string>): Promise<MemberCreden
 			 SELECT ?, ?, ?, ?, ? WHERE changes() = 1`,
 		).bind(member_id, invite.team_id, invite.handle, await hash_token(member_token), now),
 	]);
-	const claim_update = claim_results[0] ?? null;
+
+	const [claim_update = null] = claim_results;
 
 	// The row read before the claim says why the claim updated nothing.
 	if (claim_update === null || claim_update.meta.changes !== 1) {
